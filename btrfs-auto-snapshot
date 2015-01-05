@@ -96,7 +96,7 @@ log()
 GETOPT=$(getopt \
     --longoptions=debug,help,keep:,label: \
     --longoptions=dry-run,prefix:,quiet,verbose \
-    --longoptions=writeable \
+    --longoptions=syslog,writeable \
     --options=d,g,h,k:,l:,n,p:,q,v,w \
     -- "$@" ) \
     || exit 128
