@@ -27,7 +27,7 @@ debug=''
 dry_run=''
 keep=''
 label=''
-log_prefix='btrfs-auto-snap'
+prefix='btrfs-auto-snap'
 use_syslog=''
 verbose=''
 quiet=''
@@ -57,27 +57,27 @@ log()
 
     case $LEVEL in
         (eme*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.emerge $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge $*
             echo Emergency: $* 1>&2
             ;;
         (ale*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.alert $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert $*
             echo Alert: $* 1>&2
             ;;
         (cri*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.crit $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit $*
             echo Critical: $* 1>&2
             ;;
         (err*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.err $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.err $*
             echo Error: $* 1>&2
             ;;
         (war*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.warn $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn $*
             echo Warning: $* 1>&2
             ;;
         (not*)
-            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.notice $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice $*
             echo Notice: $* 1>&2
             ;;
         (inf*)
@@ -87,7 +87,7 @@ log()
             test -n "$debug" && echo Debug: $*
             ;;
         (*)
-            test -n "$use_syslog" && logger -t "$log_prefix" $*
+            test -n "$use_syslog" && logger -t "$prefix" $*
             echo $* 1>&2
             ;;
     esac
@@ -192,6 +192,9 @@ if [ $# -gt 1 -a $SLASHIES -gt 0 ] ; then
     exit 134
 fi
 
+snapname=${prefix}_${label}-$(date +%F-%H%M)
+snapglob="${prefix}_$[label}????????????????"
+
 btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}')
 
 if [ "$1" = '//' ] ; then
@@ -200,6 +203,7 @@ else
     fs_list="$@"
 fi
 
+log info "Doing snapshots of $fs_list"
 for i in "$fs_list"
 do
     echo "$btrfs_list" | grep -q "$i"
@@ -214,5 +218,21 @@ do
 
     ${dry_run} btrfs subvolume snapshot \
         ${writeable} ${i} \
-        ${i}/.btrfs/${log_prefix}_${label}-$(date +%Y-%m-%d-%H%M)
+        ${i}/.btrfs/${snapname}
 done
+
+log info "Destroying all but the newest $keep snapshots"
+for i in "$fs_list"
+do
+    btrfs subvolume list -g --sort=gen $i | \
+        sort -r -n -k 4 | awk '{print $NF}' | while read j
+        do
+            if [ -z "${j#$snapglob}" ] ; then
+                keep=$(( $keep -1 ))
+                if [ $keep -lt 0 ] ; then
+                    btrfs subvolume delete ${i}/${j}
+                fi
+            fi
+        done
+done
+
