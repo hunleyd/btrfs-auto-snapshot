@@ -23,6 +23,8 @@ Requirements
 ------------
 GNU Bash
 <br>GNU Coreutils
+<br>GNU grep
+<br>GNU gawk
 <br>btrfs-progs
 
 Bugs
