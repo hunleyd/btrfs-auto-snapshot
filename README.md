@@ -39,7 +39,7 @@ Keep up to date on announcements and more by following Doug on Twitter,
 
 Authors
 -------
-** Douglas J Hunley**
+**Douglas J Hunley**
 + G: http://goo.gl/sajR3
 + Twitter: http://twitter.com/hunleyd
 + GitHub: http://github.com/hunleyd
