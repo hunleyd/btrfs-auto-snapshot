@@ -1,0 +1,218 @@
+#!/bin/bash
+
+# btrfs-auto-snapshot for Linux
+# Automatically create, rotate, and destroy periodic BTRFS snapshots.
+# Copyright 2014 Doug Hunley <doug.hunley@gmail.com>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place, Suite 330, Boston, MA  02111-1307  USA
+#
+
+# --auto-snapshot --quiet --skip-scrub --recursive --syslog --label=daily
+# --keep=31 //
+
+# set defaults
+debug=''
+dry_run=''
+keep=''
+label=''
+log_prefix='btrfs-auto-snap'
+use_syslog=''
+verbose=''
+quiet=''
+writeable='-r'
+
+usage()
+{
+        echo "Usage: $0 [options] [-l label] <'//' | name [name...]>
+        -d, --debug         Print debugging messages
+        -g, --syslog        Write to syslog
+        -h, --help          Print this usage message
+        -k, --keep=NUM      Keep NUM recent snapshots and destroy older snapshots
+        -l, --label=LAB     LAB is usually 'hourly', 'daily', or 'monthly'
+        -n, --dry-run       Print actions w/o actually doing
+        -p, --prefix=PRE    PRE is 'btrfs-auto-snap' by default
+        -q, --quiet         Suppress warning and notices on STDOUT
+        -v, --verbose       Print info messages
+        -w, --writeable     Create writeable snapshots instead of read-only
+            name            Filesystem name(s), or '//' for all filesystems
+"
+}
+
+log()
+{
+    LEVEL=$1
+    shift 1
+
+    case $LEVEL in
+        (eme*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.emerge $*
+            echo Emergency: $* 1>&2
+            ;;
+        (ale*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.alert $*
+            echo Alert: $* 1>&2
+            ;;
+        (cri*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.crit $*
+            echo Critical: $* 1>&2
+            ;;
+        (err*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.err $*
+            echo Error: $* 1>&2
+            ;;
+        (war*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.warn $*
+            echo Warning: $* 1>&2
+            ;;
+        (not*)
+            test -n "$use_syslog" && logger -t "$log_prefix" -p daemon.notice $*
+            echo Notice: $* 1>&2
+            ;;
+        (inf*)
+            test -n "$verbose" && echo $*
+            ;;
+        (deb*)
+            test -n "$debug" && echo Debug: $*
+            ;;
+        (*)
+            test -n "$use_syslog" && logger -t "$log_prefix" $*
+            echo $* 1>&2
+            ;;
+    esac
+}
+
+GETOPT=$(getopt \
+    --longoptions=debug,help,keep:,label: \
+    --longoptions=dry-run,prefix:,quiet,verbose \
+    --longoptions=writeable \
+    --options=d,g,h,k:,l:,n,p:,q,v,w \
+    -- "$@" ) \
+    || exit 128
+
+eval set -- "$GETOPT"
+
+while [ $# -gt 0 ]
+do
+    case "$1" in
+        (-d|--debug)
+            debug=1
+            quiet=''
+            verbose=1
+            shift 1
+            ;;
+        (-g|--syslog)
+            use_syslog=1
+            shift 1
+            ;;
+        (-h|--help)
+            usage
+            exit 0
+            ;;
+        (-k|--keep)
+            if ! test $2 -gt 0 2>/dev/null; then
+                log error "The $1 parameter must be a positive integer"
+                exit 129
+            fi
+            keep=$2
+            shift 2
+            ;;
+        (-l|--label)
+            label="$2"
+            shift 2
+            ;;
+        (-n|--dry-run)
+            dry_run='echo'
+            verbose=1
+            log info "Doing a dry run. Not running these commands..."
+            shift 1
+            ;;
+        (-p|--prefix)
+            prefix="$2"
+            while test "${prefix}" -gt 0
+            do
+                case $prefix in
+                    ([![:alnum:]_.:\ -]*)
+                        log error "The $1 parameter must be alphanumeric"
+                        exit 130
+                        ;;
+                esac
+                prefix="${prefix#?}"
+            done
+            prefix="$2"
+            shift 2
+            ;;
+        (-q|--quiet)
+            debug=''
+            quiet=1
+            verbose=''
+            shift 1
+            ;;
+        (-v|--verbose)
+            quiet=''
+            verbose=1
+            shift 1
+            ;;
+        (-w|--writeable)
+            writeable=''
+            shift 1
+            ;;
+        (--)
+            shift 1
+            break
+            ;;
+    esac
+done
+
+if [ $# -eq 0 ] ; then
+    log error "The filesystem argument list is empty"
+    exit 133
+fi
+
+# count the number of times '//' appears on the command line
+SLASHIES=0
+for i in "$@"
+do
+    test "$i" = '//' && SLASHIES=$(( $SLASHIES + 1 ))
+done
+
+if [ $# -gt 1 -a $SLASHIES -gt 0 ] ; then
+    log error "The // must be the only argument if it is given"
+    exit 134
+fi
+
+btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}')
+
+if [ "$1" = '//' ] ; then
+    fs_list=$btrfs_list
+else
+    fs_list="$@"
+fi
+
+for i in "$fs_list"
+do
+    echo "$btrfs_list" | grep -q "$i"
+    if [ $? -ne 0 ] ; then
+        log err "It appears that $i is not a BTRFS filesystem"
+        exit 135
+    fi
+
+    if [ ! -d ${i}/.btrfs ] ; then
+        ${dry_run} mkdir ${i}/.btrfs
+    fi
+
+    ${dry_run} btrfs subvolume snapshot \
+        ${writeable} ${i} \
+        ${i}/.btrfs/${log_prefix}_${label}-$(date +%Y-%m-%d-%H%M)
+done
