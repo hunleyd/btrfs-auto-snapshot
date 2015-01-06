@@ -17,10 +17,6 @@
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
-#
-
-# --auto-snapshot --quiet --skip-scrub --recursive --syslog --label=daily
-# --keep=31 //
 
 # set defaults
 debug=''
@@ -93,7 +89,7 @@ log()
     esac
 }
 
-GETOPT=$(getopt \
+getopt=$(getopt \
     --longoptions=debug,help,keep:,label: \
     --longoptions=dry-run,prefix:,quiet,verbose \
     --longoptions=syslog,writeable \
@@ -101,7 +97,7 @@ GETOPT=$(getopt \
     -- "$@" ) \
     || exit 128
 
-eval set -- "$GETOPT"
+eval set -- "$getopt"
 
 while [ $# -gt 0 ]
 do
@@ -181,19 +177,19 @@ if [ $# -eq 0 ] ; then
 fi
 
 # count the number of times '//' appears on the command line
-SLASHIES=0
+slashies=0
 for i in "$@"
 do
-    test "$i" = '//' && SLASHIES=$(( $SLASHIES + 1 ))
+    test "$i" = '//' && slashies=$(( $SLASHIES + 1 ))
 done
 
-if [ $# -gt 1 -a $SLASHIES -gt 0 ] ; then
+if [ $# -gt 1 -a $slashies -gt 0 ] ; then
     log error "The // must be the only argument if it is given"
     exit 134
 fi
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
-snapglob="${prefix}_$[label}????????????????"
+snapglob="${prefix}_${label}????????????????"
 
 btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}')
 
@@ -228,7 +224,7 @@ do
         sort -r -n -k 4 | awk '{print $NF}' | while read j
         do
             if [ -z "${j#$snapglob}" ] ; then
-                keep=$(( $keep -1 ))
+                keep=$(( $keep - 1 ))
                 if [ $keep -lt 0 ] ; then
                     btrfs subvolume delete ${i}/${j}
                 fi
