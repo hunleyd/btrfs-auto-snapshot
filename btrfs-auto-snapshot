@@ -226,7 +226,7 @@ do
             if [ -z "${j#$snapglob}" ] ; then
                 keep=$(( $keep - 1 ))
                 if [ $keep -lt 0 ] ; then
-                    btrfs subvolume delete ${i}/${j}
+                    btrfs subvolume delete -c ${i}/${j}
                 fi
             fi
         done
