@@ -189,7 +189,7 @@ if [ $# -gt 1 -a $slashies -gt 0 ] ; then
 fi
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
-snapglob="${prefix}_${label}????????????????"
+snapglob=".btrfs/${prefix}_${label}????????????????"
 
 btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}')
 
@@ -217,18 +217,20 @@ do
         ${i}/.btrfs/${snapname}
 done
 
-log info "Destroying all but the newest $keep snapshots"
-for i in "$fs_list"
-do
-    btrfs subvolume list -g --sort=gen $i | \
-        sort -r -n -k 4 | awk '{print $NF}' | while read j
-        do
-            if [ -z "${j#$snapglob}" ] ; then
-                keep=$(( $keep - 1 ))
-                if [ $keep -lt 0 ] ; then
-                    btrfs subvolume delete -c ${i}/${j}
-                fi
-            fi
-        done
-done
+if [ ! -z "${keep}" ] ; then
+	log info "Destroying all but the newest $keep snapshots"
+	for i in "$fs_list"
+	do
+	    btrfs subvolume list -g --sort=gen $i | \
+	        sort -r -n -k 4 | awk '{print $NF}' | while read j
+       		 do
+	            if [ -z "${j#$snapglob}" ] ; then
+	                keep=$(( $keep - 1 ))
+	                if [ $keep -lt 0 ] ; then
+	                    btrfs subvolume delete -c ${i}/${j}
+	                fi
+	            fi
+	        done
+	done
+fi
 
