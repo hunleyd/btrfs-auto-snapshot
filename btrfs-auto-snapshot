@@ -31,18 +31,18 @@ writeable='-r'
 
 usage()
 {
-        echo "Usage: $0 [options] [-l label] <'//' | name [name...]>
-        -d, --debug         Print debugging messages
-        -g, --syslog        Write to syslog
-        -h, --help          Print this usage message
-        -k, --keep=NUM      Keep NUM recent snapshots and destroy older snapshots
-        -l, --label=LAB     LAB is usually 'hourly', 'daily', or 'monthly'
-        -n, --dry-run       Print actions w/o actually doing
-        -p, --prefix=PRE    PRE is 'btrfs-auto-snap' by default
-        -q, --quiet         Suppress warning and notices on STDOUT
-        -v, --verbose       Print info messages
-        -w, --writeable     Create writeable snapshots instead of read-only
-            name            Filesystem name(s), or '//' for all filesystems
+    echo "Usage: $0 [options] [-l label] <'//' | name [name...]>
+    -d, --debug         Print debugging messages
+    -g, --syslog        Write to syslog
+    -h, --help          Print this usage message
+    -k, --keep=NUM      Keep NUM recent snapshots and destroy older snapshots
+    -l, --label=LAB     LAB is usually 'hourly', 'daily', or 'monthly'
+    -n, --dry-run       Print actions w/o actually doing
+    -p, --prefix=PRE    PRE is 'btrfs-auto-snap' by default
+    -q, --quiet         Suppress warning and notices on STDOUT
+    -v, --verbose       Print info messages
+    -w, --writeable     Create writeable snapshots instead of read-only
+    name            Filesystem name(s), or '//' for all filesystems
 "
 }
 
@@ -74,7 +74,7 @@ log()
             ;;
         (not*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice $*
-            echo Notice: $* 1>&2
+            test -n "$verbose" && echo Notice: $* 1>&2
             ;;
         (inf*)
             test -n "$verbose" && echo $*
@@ -200,6 +200,7 @@ else
 fi
 
 log info "Doing snapshots of $fs_list"
+
 for i in "$fs_list"
 do
     echo "$btrfs_list" | grep -q "$i"
@@ -212,25 +213,28 @@ do
         ${dry_run} mkdir ${i}/.btrfs
     fi
 
-    ${dry_run} btrfs subvolume snapshot \
+    log notice $( ${dry_run} btrfs subvolume snapshot \
         ${writeable} ${i} \
-        ${i}/.btrfs/${snapname}
+        ${i}/.btrfs/${snapname} )
 done
 
 if [ ! -z "${keep}" ] ; then
-	log info "Destroying all but the newest $keep snapshots"
-	for i in "$fs_list"
-	do
-	    btrfs subvolume list -g --sort=gen $i | \
-	        sort -r -n -k 4 | awk '{print $NF}' | while read j
-       		 do
-	            if [ -z "${j#$snapglob}" ] ; then
-	                keep=$(( $keep - 1 ))
-	                if [ $keep -lt 0 ] ; then
-	                    btrfs subvolume delete -c ${i}/${j}
-	                fi
-	            fi
-	        done
-	done
+    log info "Destroying all but the newest $keep snapshots"
+
+    for i in "$fs_list"
+    do
+        btrfs subvolume list -g --sort=gen $i | \
+        sort -r -n -k 4 | awk '{print $NF}' | while read j
+        do
+            if [ -z "${j#$snapglob}" ] ; then
+                keep=$(( $keep - 1 ))
+                if [ $keep -lt 0 ] ; then
+                    log notice $( ${dry_run} btrfs subvolume \
+                        delete -c ${i}/${j} )
+                fi
+            fi
+        done
+    done
 fi
 
+# vim: set expandtab:ts=4:sw=4
