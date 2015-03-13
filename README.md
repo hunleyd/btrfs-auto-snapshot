@@ -46,7 +46,7 @@ Authors
 
 Copyright and license
 ---------------------
-Copyright 2014 Douglas J Hunley.
+Copyright 2015 Douglas J Hunley.
 
 Licensed under the GNU GPL License, Version 2.0 (the "License"); you may not use this work
 except in compliance with the License. You may obtain a copy of the License in the
