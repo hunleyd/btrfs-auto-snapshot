@@ -201,7 +201,7 @@ fi
 
 log info "Doing snapshots of $fs_list"
 
-for i in "$fs_list"
+for i in $fs_list
 do
     echo "$btrfs_list" | grep -q "$i"
     if [ $? -ne 0 ] ; then
@@ -209,7 +209,7 @@ do
         exit 135
     fi
 
-    if [ ! -d ${i}/.btrfs ] ; then
+    if [ ! -d "${i}/.btrfs" ] ; then
         ${dry_run} mkdir ${i}/.btrfs
     fi
 
