@@ -221,7 +221,7 @@ done
 if [ ! -z "${keep}" ] ; then
     log info "Destroying all but the newest $keep snapshots"
 
-    for i in "$fs_list"
+    for i in $fs_list
     do
         btrfs subvolume list -g --sort=gen $i | \
         sort -r -n -k 4 | awk '{print $NF}' | while read j
