@@ -53,27 +53,27 @@ log()
 
     case $LEVEL in
         (eme*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge -- $*
             echo Emergency: $* 1>&2
             ;;
         (ale*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert -- $*
             echo Alert: $* 1>&2
             ;;
         (cri*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit -- $*
             echo Critical: $* 1>&2
             ;;
         (err*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.err $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.err -- $*
             echo Error: $* 1>&2
             ;;
         (war*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn -- $*
             echo Warning: $* 1>&2
             ;;
         (not*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice $*
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice -- $*
             test -n "$verbose" && echo Notice: $* 1>&2
             ;;
         (inf*)
@@ -83,7 +83,7 @@ log()
             test -n "$debug" && echo Debug: $*
             ;;
         (*)
-            test -n "$use_syslog" && logger -t "$prefix" $*
+            test -n "$use_syslog" && logger -t "$prefix" -- $*
             echo $* 1>&2
             ;;
     esac
