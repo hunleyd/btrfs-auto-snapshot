@@ -12,7 +12,7 @@ btrfs-auto-snapshot [foo]
 btrfs-auto-snapshot is a Bash script to bring as much of the functionality
 of the wonderful ZFS snapshot tool zfs-auto-snapshot to BTRFS. Designed to
 run from cron (using /etc/cron.{daily,hourly,weekly}) it automatically
-creates a snapshot of th specified BTRFS filesystem (or, optionally, all of
+creates a snapshot of the specified BTRFS filesystem (or, optionally, all of
 them) and then automatically purges the oldest snapshots of that type
 (hourly, daily, et al) based on a user-defined retention policy.
 
@@ -40,13 +40,12 @@ Keep up to date on announcements and more by following Doug on Twitter,
 Authors
 -------
 **Douglas J Hunley**
-+ G: http://goo.gl/sajR3
 + Twitter: http://twitter.com/hunleyd
 + GitHub: http://github.com/hunleyd
 
 Copyright and license
 ---------------------
-Copyright 2015 Douglas J Hunley.
+Copyright 2015-2020 Douglas J Hunley.
 
 Licensed under the GNU GPL License, Version 2.0 (the "License"); you may not use this work
 except in compliance with the License. You may obtain a copy of the License in the
