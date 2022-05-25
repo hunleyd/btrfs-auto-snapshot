@@ -203,7 +203,7 @@ log info "Doing snapshots of $fs_list"
 
 for i in $fs_list
 do
-    echo "$btrfs_list" | grep -q "$i"
+    echo "$btrfs_list" | grep -F -f - -q <(echo ${i})
     if [ $? -ne 0 ] ; then
         log err "It appears that $i is not a BTRFS filesystem"
         exit 135
