@@ -111,29 +111,29 @@ log()
 #
 argsp_stdin_to_array()
 {
-  local -r stdin="$(cat '/dev/stdin')"
-  local -a ret_val=()
+    local -r stdin="$(cat '/dev/stdin')"
+    local -a ret_val=()
 
-  while IFS= read -r line; do
-    local is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
-    local is_comment="$(echo "${line}" | grep --count -e '^#')"
-    local is_empty="$(  echo "${line}" | grep --count -e '^$')"
+    while IFS= read -r line; do
+        local is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
+        local is_comment="$(echo "${line}" | grep --count -e '^#')"
+        local is_empty="$(  echo "${line}" | grep --count -e '^$')"
 
-    if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
+        if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
+        then
+            continue
+        fi
+
+        ret_val+=(${line})
+    done <<< "${stdin}"
+
+    if [ ${#ret_val[@]} -eq 0 ]
     then
-      continue
+        echo 'No arguments given using STDIN.' >&2
+        exit ${ERR_STDIN_EMPTY}
     fi
 
-    ret_val+=(${line})
-  done <<< "${stdin}"
-
-  if [ ${#ret_val[@]} -eq 0 ]
-  then
-    echo 'No arguments given using STDIN.' >&2
-    exit ${ERR_STDIN_EMPTY}
-  fi
-
-  declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
+    declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
 }
 
 ##
