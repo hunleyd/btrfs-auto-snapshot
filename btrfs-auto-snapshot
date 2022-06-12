@@ -29,7 +29,14 @@ verbose=''
 quiet=''
 writeable='-r'
 
-ARGSP_ERR_STDIN_EMPTY=1
+ERR_SUCCESS=0
+ERR_STDIN_EMPTY=1
+ERR_GETOPT_FAILED=128
+ERR_KEEP_NEGATIVE=129
+ERR_PREFIX_WRONG=130
+ERR_FS_MISSING=133
+ERR_FS_SLASHIES=134
+ERR_FS_NO_BTRFS=135
 
 usage()
 {
@@ -123,7 +130,7 @@ argsp_stdin_to_array()
   if [ ${#ret_val[@]} -eq 0 ]
   then
     echo 'No arguments given using STDIN.' >&2
-    exit ${ARGSP_ERR_STDIN_EMPTY}
+    exit ${ERR_STDIN_EMPTY}
   fi
 
   declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
@@ -182,7 +189,7 @@ getopt=$(getopt \
     --longoptions=syslog,writeable \
     --options=d,g,h,k:,l:,n,p:,q,v,w \
     -- "$@" ) \
-    || exit 128
+    || exit ${ERR_GETOPT_FAILED}
 
 eval set -- "$getopt"
 
@@ -201,12 +208,12 @@ do
             ;;
         (-h|--help)
             usage
-            exit 0
+            exit ${ERR_SUCCESS}
             ;;
         (-k|--keep)
             if ! test $2 -gt 0 2>/dev/null; then
                 log error "The $1 parameter must be a positive integer"
-                exit 129
+                exit ${ERR_KEEP_NEGATIVE}
             fi
             keep=$2
             shift 2
@@ -228,7 +235,7 @@ do
                 case $prefix in
                     ([![:alnum:]_.:\ -]*)
                         log error "The $1 parameter must be alphanumeric"
-                        exit 130
+                        exit ${ERR_PREFIX_WRONG}
                         ;;
                 esac
                 prefix="${prefix#?}"
@@ -260,7 +267,7 @@ done
 
 if [ $# -eq 0 ] ; then
     log error "The filesystem argument list is empty"
-    exit 133
+    exit ${ERR_FS_MISSING}
 fi
 
 # count the number of times '//' appears on the command line
@@ -272,7 +279,7 @@ done
 
 if [ $# -gt 1 -a $slashies -gt 0 ] ; then
     log error "The // must be the only argument if it is given"
-    exit 134
+    exit ${ERR_FS_SLASHIES}
 fi
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
@@ -294,7 +301,7 @@ do
     printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q <(echo ${i})
     if [ $? -ne 0 ] ; then
         log err "It appears that '${i}' is not a BTRFS filesystem!"
-        exit 135
+        exit ${ERR_FS_NO_BTRFS}
     fi
 
     if [ ! -d "${i}/.btrfs" ] ; then
