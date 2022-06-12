@@ -322,7 +322,8 @@ if [ ! -z "${keep}" ] ; then
 
     for i in $fs_list
     do
-        snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
+        fs_keep="${keep}"
+	snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
 	paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
 	paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
 
@@ -332,8 +333,8 @@ if [ ! -z "${keep}" ] ; then
                 continue
             fi
             
-	    keep=$(( $keep - 1 ))
-            if [ $keep -lt 0 ] ; then
+	    fs_keep=$(( ${fs_keep} - 1 ))
+            if [ ${fs_keep} -lt 0 ] ; then
                 log notice $( ${dry_run} btrfs subvolume \
                     delete -c ${i}/${j} )
             fi
