@@ -223,7 +223,7 @@ if [ ! -z "${keep}" ] ; then
 
     for i in $fs_list
     do
-        btrfs subvolume list -g --sort=gen $i | \
+        btrfs subvolume list -g -s --sort=gen $i | \
         sort -r -n -k 4 | awk '{print $NF}' | while read j
         do
             if [ -z "${j#$snapglob}" ] ; then
