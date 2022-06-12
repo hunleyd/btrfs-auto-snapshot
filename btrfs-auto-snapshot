@@ -298,7 +298,7 @@ log info "Doing snapshots of $fs_list"
 
 for i in $fs_list
 do
-    printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q <(echo ${i})
+    printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
     if [ $? -ne 0 ] ; then
         log err "It appears that '${i}' is not a BTRFS filesystem!"
         exit ${ERR_FS_NO_BTRFS}
