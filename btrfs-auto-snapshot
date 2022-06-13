@@ -1,5 +1,6 @@
 #!/bin/bash
 
+##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
 # Copyright 2014 Doug Hunley <doug.hunley@gmail.com>
@@ -20,6 +21,7 @@
 
 ERR_SUCCESS=0
 ERR_STDIN_EMPTY=1
+ERR_MISSING_SYS_REQS=2
 ERR_GETOPT_FAILED=128
 ERR_KEEP_NEGATIVE=129
 ERR_PREFIX_WRONG=130
@@ -40,6 +42,19 @@ use_syslog=''
 verbose=''
 quiet=''
 writeable='-r'
+
+##
+# Check for available necessary system requirements, like a current enough bash and stuff.
+#
+check_sys_reqs()
+{
+    unset assoc
+    if ! declare -A assoc 2> /dev/null
+    then
+        echo "Associative arrays not supported! At least BASH 4 needed."
+        exit ${ERR_MISSING_SYS_REQS}
+    fi
+}
 
 usage()
 {
@@ -398,6 +413,7 @@ btrfs_snaps_rm_if()
     done
 }
 
+check_sys_reqs
 getopt=$(getopt \
     --longoptions=debug,help,keep:,label: \
     --longoptions=dry-run,prefix:,quiet,verbose \
