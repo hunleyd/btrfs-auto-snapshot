@@ -323,6 +323,81 @@ btrfs_subvols_calc()
     declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
 }
 
+##
+# Create snapshots using the paths
+#
+# @param[in] The paths to work with.
+#
+btrfs_snaps_do()
+{
+    local -r fs_list="${1:?No paths given.}"
+
+    log info "Doing snapshots of $fs_list"
+
+    for i in $fs_list
+    do
+        printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
+        if [ $? -ne 0 ]
+	then
+            log err "It appears that '${i}' is not a BTRFS filesystem!"
+            exit ${ERR_FS_NO_BTRFS}
+        fi
+
+        if [ ! -d "${i}/.btrfs" ]
+	then
+            ${dry_run} mkdir "${i}/.btrfs"
+        fi
+
+        # TODO Creating snapshots too frequently so that names overlap with an existing one, result
+        # in some error message about read-only file system, not mentioning the actual snapshot
+	# itself at all. Is bit difficult to understand when happening especially during tests, so
+        # might check if the desired snapshot exists already.
+        log notice $( ${dry_run} btrfs subvolume snapshot \
+            ${writeable} "${i}" \
+            "${i%/}/.btrfs/${snapname}" )
+    done
+}
+
+##
+# Cleanup snapshots depending on how many to keep, if to cleanup at all.
+#
+# @param[in] The paths to work with.
+#
+btrfs_snaps_rm_if()
+{
+    if [ -z "${keep}" ]
+    then
+        return
+    fi
+
+    local -r fs_list="${1:?No paths given.}"
+
+    log info "Destroying all but the newest ${keep} snapshots"
+
+    for i in $fs_list
+    do
+        fs_keep="${keep}"
+        snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
+        paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
+        paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
+
+        while IFS= read -r j
+        do
+            if [ ! -z "${j#$snapglob}" ]
+	    then
+                continue
+            fi
+
+            fs_keep=$(( ${fs_keep} - 1 ))
+            if [ ${fs_keep} -lt 0 ]
+	    then
+                log notice $( ${dry_run} btrfs subvolume \
+                    delete -c ${i}/${j} )
+            fi
+        done <<< "${paths}"
+    done
+}
+
 getopt=$(getopt \
     --longoptions=debug,help,keep:,label: \
     --longoptions=dry-run,prefix:,quiet,verbose \
@@ -358,52 +433,7 @@ else
     fs_list="${cmdline[paths]}"
 fi
 
-log info "Doing snapshots of $fs_list"
-
-for i in $fs_list
-do
-    printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
-    if [ $? -ne 0 ] ; then
-        log err "It appears that '${i}' is not a BTRFS filesystem!"
-        exit ${ERR_FS_NO_BTRFS}
-    fi
-
-    if [ ! -d "${i}/.btrfs" ] ; then
-        ${dry_run} mkdir "${i}/.btrfs"
-    fi
-
-    # TODO Creating snapshots too frequently so that names overlap with an existing one, result in
-    # some error message about read-only file system, not mentioning the actual snapshot itself at
-    # all. Is bit difficult to understand when happening especially during tests, so might check if
-    # the desired snapshot exists already.
-    log notice $( ${dry_run} btrfs subvolume snapshot \
-        ${writeable} "${i}" \
-        "${i%/}/.btrfs/${snapname}" )
-done
-
-if [ ! -z "${keep}" ] ; then
-    log info "Destroying all but the newest ${keep} snapshots"
-
-    for i in $fs_list
-    do
-        fs_keep="${keep}"
-	snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
-	paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
-	paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
-
-	while IFS= read -r j
-        do
-            if [ ! -z "${j#$snapglob}" ] ; then
-                continue
-            fi
-            
-	    fs_keep=$(( ${fs_keep} - 1 ))
-            if [ ${fs_keep} -lt 0 ] ; then
-                log notice $( ${dry_run} btrfs subvolume \
-                    delete -c ${i}/${j} )
-            fi
-	done <<< "${paths}"
-    done
-fi
+btrfs_snaps_do    "${fs_list}"
+btrfs_snaps_rm_if "${fs_list}"
 
 # vim: set expandtab:ts=4:sw=4
