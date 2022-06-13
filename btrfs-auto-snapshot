@@ -18,7 +18,19 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+ERR_SUCCESS=0
+ERR_STDIN_EMPTY=1
+ERR_GETOPT_FAILED=128
+ERR_KEEP_NEGATIVE=129
+ERR_PREFIX_WRONG=130
+ERR_FS_MISSING=133
+ERR_FS_SLASHIES=134
+ERR_FS_NO_BTRFS=135
+
+trap argsp_cmdline_exit_handler SIGUSR1
+
 # set defaults
+argsp_cmdline_exit="${ERR_SUCCESS}"
 debug=''
 dry_run=''
 keep=''
@@ -28,15 +40,6 @@ use_syslog=''
 verbose=''
 quiet=''
 writeable='-r'
-
-ERR_SUCCESS=0
-ERR_STDIN_EMPTY=1
-ERR_GETOPT_FAILED=128
-ERR_KEEP_NEGATIVE=129
-ERR_PREFIX_WRONG=130
-ERR_FS_MISSING=133
-ERR_FS_SLASHIES=134
-ERR_FS_NO_BTRFS=135
 
 usage()
 {
@@ -114,7 +117,8 @@ argsp_stdin_to_array()
     local -r stdin="$(cat '/dev/stdin')"
     local -a ret_val=()
 
-    while IFS= read -r line; do
+    while IFS= read -r line
+    do
         local is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
         local is_comment="$(echo "${line}" | grep --count -e '^#')"
         local is_empty="$(  echo "${line}" | grep --count -e '^$')"
@@ -134,6 +138,142 @@ argsp_stdin_to_array()
     fi
 
     declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
+}
+
+##
+# Parse and set command line arguments, posisbly aborting in case of errors or missing paths to
+# actually work with.
+#
+# @param[in] Callers need t5o forward {@code $@}!
+# return     Associative array with all options and parsed paths.
+#
+argsp_cmdline()
+{
+    declare -A ret_val
+
+    ret_val[debug]=''
+    ret_val[dry_run]=''
+    ret_val[keep]=''
+    ret_val[label]=''
+    ret_val[prefix]='btrfs-auto-snap'
+    ret_val[use_syslog]=''
+    ret_val[verbose]=''
+    ret_val[quiet]=''
+    ret_val[writeable]='-r'
+    ret_val[paths]=''
+
+    while [ $# -gt 0 ]
+    do
+        case "$1" in
+            (-d|--debug)
+                ret_val[debug]=1
+                ret_val[quiet]=''
+                ret_val[verbose]=1
+                shift 1
+            ;;
+            (-g|--syslog)
+	        ret_val[use_syslog]=1
+		shift 1
+            ;;
+            (-h|--help)
+                usage
+                argsp_cmdline_exit=${ERR_SUCCESS}
+		kill -SIGUSR1 $$
+            ;;
+            (-k|--keep)
+                if ! test $2 -gt 0 2>/dev/null
+	        then
+                    log error "The $1 parameter must be a positive integer."
+                    argsp_cmdline_exit=${ERR_KEEP_NEGATIVE}
+		    kill -SIGUSR1 $$
+                fi
+                ret_val[keep]=$2
+                shift 2
+            ;;
+            (-l|--label)
+                ret_val[label]="$2"
+                shift 2
+            ;;
+            (-n|--dry-run)
+                ret_val[dry_run]='echo'
+                ret_val[verbose]=1
+                log info "Doing a dry run. Not running these commands..."
+                shift 1
+            ;;
+            (-p|--prefix)
+                prefix="$2"
+                while test "${prefix}" -gt 0
+                do
+                    case $prefix in
+                        ([![:alnum:]_.:\ -]*)
+                            log error "The $1 parameter must be alphanumeric."
+                            argsp_cmdline_exit=${ERR_PREFIX_WRONG}
+			    kill -SIGUSR1 $$
+                        ;;
+                    esac
+                    prefix="${prefix#?}"
+                done
+
+		ret_val[prefix]="$2"
+                shift 2
+            ;;
+            (-q|--quiet)
+                ret_val[debug]=''
+                ret_val[quiet]=1
+                ret_val[verbose]=''
+                shift 1
+            ;;
+            (-v|--verbose)
+                ret_val[quiet]=''
+                ret_val[verbose]=1
+                shift 1
+            ;;
+            (-w|--writeable)
+                ret_val[writeable]=''
+                shift 1
+            ;;
+            (--)
+                shift 1
+                break
+            ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]
+    then
+        log error "The filesystem argument list is empty."
+        argsp_cmdline_exit=${ERR_FS_MISSING}
+	kill -SIGUSR1 $$
+    fi
+
+    # Count the number of times '//' appears on the command line.
+    local slashies=0
+    for i in "$@"
+    do
+         test "$i" = '//' && slashies=$(( $slashies + 1 ))
+    done
+
+    if [ $# -gt 1 -a $slashies -gt 0 ]
+    then
+        log error "The // must be the only argument if it is given."
+        argsp_cmdline_exit=${ERR_FS_SLASHIES}
+	kill -SIGUSR1 $$
+    fi
+
+    ret_val[paths]="$@"
+    declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
+}
+
+##
+# Exit with the code stored in {@code argsp_cmdline_exit}.
+#
+# The corresponding parser function needs to be called as a subshell to be able to process the
+# returned list of paths to work with. So exit within that function doesn't work easily, which is
+# worked around by using a special global variable and {@code kill} with {@code trap}.
+#
+argsp_cmdline_exit_handler()
+{
+    exit ${argsp_cmdline_exit}
 }
 
 ##
@@ -191,96 +331,19 @@ getopt=$(getopt \
     -- "$@" ) \
     || exit ${ERR_GETOPT_FAILED}
 
-eval set -- "$getopt"
+eval set -- "${getopt}"
+cmdline="$(argsp_cmdline "$@")"
+eval "declare -A cmdline=${cmdline}"
 
-while [ $# -gt 0 ]
-do
-    case "$1" in
-        (-d|--debug)
-            debug=1
-            quiet=''
-            verbose=1
-            shift 1
-            ;;
-        (-g|--syslog)
-            use_syslog=1
-            shift 1
-            ;;
-        (-h|--help)
-            usage
-            exit ${ERR_SUCCESS}
-            ;;
-        (-k|--keep)
-            if ! test $2 -gt 0 2>/dev/null; then
-                log error "The $1 parameter must be a positive integer"
-                exit ${ERR_KEEP_NEGATIVE}
-            fi
-            keep=$2
-            shift 2
-            ;;
-        (-l|--label)
-            label="$2"
-            shift 2
-            ;;
-        (-n|--dry-run)
-            dry_run='echo'
-            verbose=1
-            log info "Doing a dry run. Not running these commands..."
-            shift 1
-            ;;
-        (-p|--prefix)
-            prefix="$2"
-            while test "${prefix}" -gt 0
-            do
-                case $prefix in
-                    ([![:alnum:]_.:\ -]*)
-                        log error "The $1 parameter must be alphanumeric"
-                        exit ${ERR_PREFIX_WRONG}
-                        ;;
-                esac
-                prefix="${prefix#?}"
-            done
-            prefix="$2"
-            shift 2
-            ;;
-        (-q|--quiet)
-            debug=''
-            quiet=1
-            verbose=''
-            shift 1
-            ;;
-        (-v|--verbose)
-            quiet=''
-            verbose=1
-            shift 1
-            ;;
-        (-w|--writeable)
-            writeable=''
-            shift 1
-            ;;
-        (--)
-            shift 1
-            break
-            ;;
-    esac
-done
-
-if [ $# -eq 0 ] ; then
-    log error "The filesystem argument list is empty"
-    exit ${ERR_FS_MISSING}
-fi
-
-# count the number of times '//' appears on the command line
-slashies=0
-for i in "$@"
-do
-    test "$i" = '//' && slashies=$(( $SLASHIES + 1 ))
-done
-
-if [ $# -gt 1 -a $slashies -gt 0 ] ; then
-    log error "The // must be the only argument if it is given"
-    exit ${ERR_FS_SLASHIES}
-fi
+debug="${cmdline[debug]}"
+dry_run="${cmdline[dry_run]}"
+keep="${cmdline[keep]}"
+label="${cmdline[label]}"
+prefix="${cmdline[prefix]}"
+use_syslog="${cmdline[use_syslog]}"
+verbose="${cmdline[verbose]}"
+quiet="${cmdline[quiet]}"
+writeable="${cmdline[writable]}"
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
@@ -288,10 +351,11 @@ snapglob=".btrfs/${prefix}_${label}????????????????"
 btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}' | btrfs_subvols_calc)
 eval "declare -a btrfs_list=${btrfs_list}"
 
-if [ "$1" = '//' ] ; then
+if [ "${cmdline[paths]}" = '//' ]
+then
     fs_list="${btrfs_list[@]}"
 else
-    fs_list="$@"
+    fs_list="${cmdline[paths]}"
 fi
 
 log info "Doing snapshots of $fs_list"
@@ -318,7 +382,7 @@ do
 done
 
 if [ ! -z "${keep}" ] ; then
-    log info "Destroying all but the newest $keep snapshots"
+    log info "Destroying all but the newest ${keep} snapshots"
 
     for i in $fs_list
     do
@@ -327,7 +391,7 @@ if [ ! -z "${keep}" ] ; then
 	paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
 	paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
 
-	while IFS= read j
+	while IFS= read -r j
         do
             if [ ! -z "${j#$snapglob}" ] ; then
                 continue
