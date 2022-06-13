@@ -187,21 +187,22 @@ argsp_cmdline()
                 shift 1
             ;;
             (-g|--syslog)
-	        ret_val[use_syslog]=1
-		shift 1
+                ret_val[use_syslog]=1
+                shift 1
             ;;
             (-h|--help)
                 usage
                 argsp_cmdline_exit=${ERR_SUCCESS}
-		kill -SIGUSR1 $$
+                kill -SIGUSR1 $$
             ;;
             (-k|--keep)
                 if ! test $2 -gt 0 2>/dev/null
-	        then
+                then
                     log error "The $1 parameter must be a positive integer."
                     argsp_cmdline_exit=${ERR_KEEP_NEGATIVE}
-		    kill -SIGUSR1 $$
+                    kill -SIGUSR1 $$
                 fi
+
                 ret_val[keep]=$2
                 shift 2
             ;;
@@ -223,13 +224,13 @@ argsp_cmdline()
                         ([![:alnum:]_.:\ -]*)
                             log error "The $1 parameter must be alphanumeric."
                             argsp_cmdline_exit=${ERR_PREFIX_WRONG}
-			    kill -SIGUSR1 $$
+                            kill -SIGUSR1 $$
                         ;;
                     esac
                     prefix="${prefix#?}"
                 done
 
-		ret_val[prefix]="$2"
+                ret_val[prefix]="$2"
                 shift 2
             ;;
             (-q|--quiet)
@@ -258,7 +259,7 @@ argsp_cmdline()
     then
         log error "The filesystem argument list is empty."
         argsp_cmdline_exit=${ERR_FS_MISSING}
-	kill -SIGUSR1 $$
+        kill -SIGUSR1 $$
     fi
 
     # Count the number of times '//' appears on the command line.
@@ -272,7 +273,7 @@ argsp_cmdline()
     then
         log error "The // must be the only argument if it is given."
         argsp_cmdline_exit=${ERR_FS_SLASHIES}
-	kill -SIGUSR1 $$
+        kill -SIGUSR1 $$
     fi
 
     ret_val[paths]="$@"
@@ -317,14 +318,14 @@ btrfs_subvols_calc()
         local subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most likely. So
-	# check for these attributes, which seems easier than to exclude all currently available
+        # check for these attributes, which seems easier than to exclude all currently available
         # snapshots by their paths. That output doesn't include leading slashes, their common
-	# directory might change its name etc.
+        # directory might change its name etc.
         while IFS= read -r subvol
         do
             local abs_path="$(echo ${mp}/${subvol} | sed -r 's!^//!/!')"
             local show="$(btrfs subvolume show "${abs_path}")"
-	    local sp='[[:space:]]+'
+            local sp='[[:space:]]+'
             local no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
             local is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
 
@@ -353,19 +354,19 @@ btrfs_snaps_do()
     do
         printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
         if [ $? -ne 0 ]
-	then
+        then
             log err "It appears that '${i}' is not a BTRFS filesystem!"
             exit ${ERR_FS_NO_BTRFS}
         fi
 
         if [ ! -d "${i}/.btrfs" ]
-	then
+        then
             ${dry_run} mkdir "${i}/.btrfs"
         fi
 
         # TODO Creating snapshots too frequently so that names overlap with an existing one, result
         # in some error message about read-only file system, not mentioning the actual snapshot
-	# itself at all. Is bit difficult to understand when happening especially during tests, so
+        # itself at all. Is bit difficult to understand when happening especially during tests, so
         # might check if the desired snapshot exists already.
         log notice $( ${dry_run} btrfs subvolume snapshot \
             ${writeable} "${i}" \
@@ -399,13 +400,13 @@ btrfs_snaps_rm_if()
         while IFS= read -r j
         do
             if [ ! -z "${j#$snapglob}" ]
-	    then
+            then
                 continue
             fi
 
             fs_keep=$(( ${fs_keep} - 1 ))
             if [ ${fs_keep} -lt 0 ]
-	    then
+            then
                 log notice $( ${dry_run} btrfs subvolume \
                     delete -c ${i}/${j} )
             fi
