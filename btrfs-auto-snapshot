@@ -1,5 +1,6 @@
 #!/bin/bash
 
+##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
 # Copyright 2014 Doug Hunley <doug.hunley@gmail.com>
@@ -18,7 +19,20 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+ERR_SUCCESS=0
+ERR_STDIN_EMPTY=1
+ERR_MISSING_SYS_REQS=2
+ERR_GETOPT_FAILED=128
+ERR_KEEP_NEGATIVE=129
+ERR_PREFIX_WRONG=130
+ERR_FS_MISSING=133
+ERR_FS_SLASHIES=134
+ERR_FS_NO_BTRFS=135
+
+trap argsp_cmdline_exit_handler SIGUSR1
+
 # set defaults
+argsp_cmdline_exit="${ERR_SUCCESS}"
 debug=''
 dry_run=''
 keep=''
@@ -28,6 +42,19 @@ use_syslog=''
 verbose=''
 quiet=''
 writeable='-r'
+
+##
+# Check for available necessary system requirements, like a current enough bash and stuff.
+#
+check_sys_reqs()
+{
+    unset assoc
+    if ! declare -A assoc 2> /dev/null
+    then
+        echo "Associative arrays not supported! At least BASH 4 needed."
+        exit ${ERR_MISSING_SYS_REQS}
+    fi
+}
 
 usage()
 {
@@ -42,7 +69,7 @@ usage()
     -q, --quiet         Suppress warning and notices on STDOUT
     -v, --verbose       Print info messages
     -w, --writeable     Create writeable snapshots instead of read-only
-    name            Filesystem name(s), or '//' for all filesystems
+    name                Filesystem name(s), or '//' for all filesystems
 "
 }
 
@@ -89,152 +116,341 @@ log()
     esac
 }
 
+##
+# {@code STDIN} can only be consumed once, so read and return it here for later processing.
+#
+# The current approach is to have one argument per line, so we are iterating all of those already,
+# remove empty lines, comments etc. and are able to check if anything was read at all in the end. If
+# not, this is most likely an error, as it doesn't make much sense to explicitly call us, so the
+# script is aborted.
+#
+# @return {@code [0]="..." [1]="..." [...]}
+# @see <a href="https://stackoverflow.com/a/16843375/2055163">How to return an array in bash without using globals?</a>
+#
+argsp_stdin_to_array()
+{
+    local -r stdin="$(cat '/dev/stdin')"
+    local -a ret_val=()
+
+    while IFS= read -r line
+    do
+        local is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
+        local is_comment="$(echo "${line}" | grep --count -e '^#')"
+        local is_empty="$(  echo "${line}" | grep --count -e '^$')"
+
+        if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
+        then
+            continue
+        fi
+
+        ret_val+=(${line})
+    done <<< "${stdin}"
+
+    if [ ${#ret_val[@]} -eq 0 ]
+    then
+        echo 'No arguments given using STDIN.' >&2
+        exit ${ERR_STDIN_EMPTY}
+    fi
+
+    declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
+}
+
+##
+# Parse and set command line arguments, posisbly aborting in case of errors or missing paths to
+# actually work with.
+#
+# @param[in] Callers need t5o forward {@code $@}!
+# return     Associative array with all options and parsed paths.
+#
+argsp_cmdline()
+{
+    declare -A ret_val
+
+    ret_val[debug]=''
+    ret_val[dry_run]=''
+    ret_val[keep]=''
+    ret_val[label]=''
+    ret_val[prefix]='btrfs-auto-snap'
+    ret_val[use_syslog]=''
+    ret_val[verbose]=''
+    ret_val[quiet]=''
+    ret_val[writeable]='-r'
+    ret_val[paths]=''
+
+    while [ $# -gt 0 ]
+    do
+        case "$1" in
+            (-d|--debug)
+                ret_val[debug]=1
+                ret_val[quiet]=''
+                ret_val[verbose]=1
+                shift 1
+            ;;
+            (-g|--syslog)
+                ret_val[use_syslog]=1
+                shift 1
+            ;;
+            (-h|--help)
+                usage
+                argsp_cmdline_exit=${ERR_SUCCESS}
+                kill -SIGUSR1 $$
+            ;;
+            (-k|--keep)
+                if ! test $2 -gt 0 2>/dev/null
+                then
+                    log error "The $1 parameter must be a positive integer."
+                    argsp_cmdline_exit=${ERR_KEEP_NEGATIVE}
+                    kill -SIGUSR1 $$
+                fi
+
+                ret_val[keep]=$2
+                shift 2
+            ;;
+            (-l|--label)
+                ret_val[label]="$2"
+                shift 2
+            ;;
+            (-n|--dry-run)
+                ret_val[dry_run]='echo'
+                ret_val[verbose]=1
+                log info "Doing a dry run. Not running these commands..."
+                shift 1
+            ;;
+            (-p|--prefix)
+                prefix="$2"
+                while test "${prefix}" -gt 0
+                do
+                    case $prefix in
+                        ([![:alnum:]_.:\ -]*)
+                            log error "The $1 parameter must be alphanumeric."
+                            argsp_cmdline_exit=${ERR_PREFIX_WRONG}
+                            kill -SIGUSR1 $$
+                        ;;
+                    esac
+                    prefix="${prefix#?}"
+                done
+
+                ret_val[prefix]="$2"
+                shift 2
+            ;;
+            (-q|--quiet)
+                ret_val[debug]=''
+                ret_val[quiet]=1
+                ret_val[verbose]=''
+                shift 1
+            ;;
+            (-v|--verbose)
+                ret_val[quiet]=''
+                ret_val[verbose]=1
+                shift 1
+            ;;
+            (-w|--writeable)
+                ret_val[writeable]=''
+                shift 1
+            ;;
+            (--)
+                shift 1
+                break
+            ;;
+        esac
+    done
+
+    if [ $# -eq 0 ]
+    then
+        log error "The filesystem argument list is empty."
+        argsp_cmdline_exit=${ERR_FS_MISSING}
+        kill -SIGUSR1 $$
+    fi
+
+    # Count the number of times '//' appears on the command line.
+    local slashies=0
+    for i in "$@"
+    do
+         test "$i" = '//' && slashies=$(( $slashies + 1 ))
+    done
+
+    if [ $# -gt 1 -a $slashies -gt 0 ]
+    then
+        log error "The // must be the only argument if it is given."
+        argsp_cmdline_exit=${ERR_FS_SLASHIES}
+        kill -SIGUSR1 $$
+    fi
+
+    ret_val[paths]="$@"
+    declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
+}
+
+##
+# Exit with the code stored in {@code argsp_cmdline_exit}.
+#
+# The corresponding parser function needs to be called as a subshell to be able to process the
+# returned list of paths to work with. So exit within that function doesn't work easily, which is
+# worked around by using a special global variable and {@code kill} with {@code trap}.
+#
+argsp_cmdline_exit_handler()
+{
+    exit ${argsp_cmdline_exit}
+}
+
+##
+# Calculate all BTRFS subvolumes based on all mounted BTRFS file systems.
+#
+# "zfs-auto-snapshot" is not only able to snapshot all pools, but as well all individual datasets
+# when using "//" as path. This function actually allows the same approach by not only looking at
+# mountpounts for BTRFS file systems, but their contained subvolumes as well. By default, each and
+# every subvolume simply gets a ".btrfs" directory to take snapshots and snapshots themself are of
+# course excluded here.
+#
+# @stdin  BTRFS file systems of interest, one per line.
+# @return All subvolumes, one per line.
+#
+btrfs_subvols_calc()
+{
+    local -a ret_val=()
+    local -r array_txt="$(argsp_stdin_to_array)"
+    eval "declare -a mps=${array_txt}"
+
+    for mp in "${mps[@]}"
+    do
+        # The mountpoint itself obviously is a subvolume of interest as well already.
+        ret_val+=(${mp})
+
+        local subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
+
+        # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most likely. So
+        # check for these attributes, which seems easier than to exclude all currently available
+        # snapshots by their paths. That output doesn't include leading slashes, their common
+        # directory might change its name etc.
+        while IFS= read -r subvol
+        do
+            local abs_path="$(echo ${mp}/${subvol} | sed -r 's!^//!/!')"
+            local show="$(btrfs subvolume show "${abs_path}")"
+            local sp='[[:space:]]+'
+            local no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
+            local is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
+
+            if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
+            then
+                ret_val+=(${abs_path})
+            fi
+        done <<< "${subvols}"
+    done
+
+    declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
+}
+
+##
+# Create snapshots using the paths
+#
+# @param[in] The paths to work with.
+#
+btrfs_snaps_do()
+{
+    local -r fs_list="${1:?No paths given.}"
+
+    log info "Doing snapshots of $fs_list"
+
+    for i in $fs_list
+    do
+        printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
+        if [ $? -ne 0 ]
+        then
+            log err "It appears that '${i}' is not a BTRFS filesystem!"
+            exit ${ERR_FS_NO_BTRFS}
+        fi
+
+        if [ ! -d "${i}/.btrfs" ]
+        then
+            ${dry_run} mkdir "${i}/.btrfs"
+        fi
+
+        # TODO Creating snapshots too frequently so that names overlap with an existing one, result
+        # in some error message about read-only file system, not mentioning the actual snapshot
+        # itself at all. Is bit difficult to understand when happening especially during tests, so
+        # might check if the desired snapshot exists already.
+        log notice $( ${dry_run} btrfs subvolume snapshot \
+            ${writeable} "${i}" \
+            "${i%/}/.btrfs/${snapname}" )
+    done
+}
+
+##
+# Cleanup snapshots depending on how many to keep, if to cleanup at all.
+#
+# @param[in] The paths to work with.
+#
+btrfs_snaps_rm_if()
+{
+    if [ -z "${keep}" ]
+    then
+        return
+    fi
+
+    local -r fs_list="${1:?No paths given.}"
+
+    log info "Destroying all but the newest ${keep} snapshots"
+
+    for i in $fs_list
+    do
+        fs_keep="${keep}"
+        snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
+        paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
+        paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
+
+        while IFS= read -r j
+        do
+            if [ ! -z "${j#$snapglob}" ]
+            then
+                continue
+            fi
+
+            fs_keep=$(( ${fs_keep} - 1 ))
+            if [ ${fs_keep} -lt 0 ]
+            then
+                log notice $( ${dry_run} btrfs subvolume \
+                    delete -c ${i}/${j} )
+            fi
+        done <<< "${paths}"
+    done
+}
+
+check_sys_reqs
 getopt=$(getopt \
     --longoptions=debug,help,keep:,label: \
     --longoptions=dry-run,prefix:,quiet,verbose \
     --longoptions=syslog,writeable \
     --options=d,g,h,k:,l:,n,p:,q,v,w \
     -- "$@" ) \
-    || exit 128
+    || exit ${ERR_GETOPT_FAILED}
 
-eval set -- "$getopt"
+eval set -- "${getopt}"
+cmdline="$(argsp_cmdline "$@")"
+eval "declare -A cmdline=${cmdline}"
 
-while [ $# -gt 0 ]
-do
-    case "$1" in
-        (-d|--debug)
-            debug=1
-            quiet=''
-            verbose=1
-            shift 1
-            ;;
-        (-g|--syslog)
-            use_syslog=1
-            shift 1
-            ;;
-        (-h|--help)
-            usage
-            exit 0
-            ;;
-        (-k|--keep)
-            if ! test $2 -gt 0 2>/dev/null; then
-                log error "The $1 parameter must be a positive integer"
-                exit 129
-            fi
-            keep=$2
-            shift 2
-            ;;
-        (-l|--label)
-            label="$2"
-            shift 2
-            ;;
-        (-n|--dry-run)
-            dry_run='echo'
-            verbose=1
-            log info "Doing a dry run. Not running these commands..."
-            shift 1
-            ;;
-        (-p|--prefix)
-            prefix="$2"
-            while test "${prefix}" -gt 0
-            do
-                case $prefix in
-                    ([![:alnum:]_.:\ -]*)
-                        log error "The $1 parameter must be alphanumeric"
-                        exit 130
-                        ;;
-                esac
-                prefix="${prefix#?}"
-            done
-            prefix="$2"
-            shift 2
-            ;;
-        (-q|--quiet)
-            debug=''
-            quiet=1
-            verbose=''
-            shift 1
-            ;;
-        (-v|--verbose)
-            quiet=''
-            verbose=1
-            shift 1
-            ;;
-        (-w|--writeable)
-            writeable=''
-            shift 1
-            ;;
-        (--)
-            shift 1
-            break
-            ;;
-    esac
-done
-
-if [ $# -eq 0 ] ; then
-    log error "The filesystem argument list is empty"
-    exit 133
-fi
-
-# count the number of times '//' appears on the command line
-slashies=0
-for i in "$@"
-do
-    test "$i" = '//' && slashies=$(( $SLASHIES + 1 ))
-done
-
-if [ $# -gt 1 -a $slashies -gt 0 ] ; then
-    log error "The // must be the only argument if it is given"
-    exit 134
-fi
+debug="${cmdline[debug]}"
+dry_run="${cmdline[dry_run]}"
+keep="${cmdline[keep]}"
+label="${cmdline[label]}"
+prefix="${cmdline[prefix]}"
+use_syslog="${cmdline[use_syslog]}"
+verbose="${cmdline[verbose]}"
+quiet="${cmdline[quiet]}"
+writeable="${cmdline[writable]}"
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
 
-btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}')
+btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}' | btrfs_subvols_calc)
+eval "declare -a btrfs_list=${btrfs_list}"
 
-if [ "$1" = '//' ] ; then
-    fs_list=$btrfs_list
+if [ "${cmdline[paths]}" = '//' ]
+then
+    fs_list="${btrfs_list[@]}"
 else
-    fs_list="$@"
+    fs_list="${cmdline[paths]}"
 fi
 
-log info "Doing snapshots of $fs_list"
-
-for i in $fs_list
-do
-    echo "$btrfs_list" | grep -F -f - -q <(echo ${i})
-    if [ $? -ne 0 ] ; then
-        log err "It appears that $i is not a BTRFS filesystem"
-        exit 135
-    fi
-
-    if [ ! -d "${i}/.btrfs" ] ; then
-        ${dry_run} mkdir ${i}/.btrfs
-    fi
-
-    log notice $( ${dry_run} btrfs subvolume snapshot \
-        ${writeable} ${i} \
-        ${i}/.btrfs/${snapname} )
-done
-
-if [ ! -z "${keep}" ] ; then
-    log info "Destroying all but the newest $keep snapshots"
-
-    for i in $fs_list
-    do
-        btrfs subvolume list -g --sort=gen $i | \
-        sort -r -n -k 4 | awk '{print $NF}' | while read j
-        do
-            if [ -z "${j#$snapglob}" ] ; then
-                keep=$(( $keep - 1 ))
-                if [ $keep -lt 0 ] ; then
-                    log notice $( ${dry_run} btrfs subvolume \
-                        delete -c ${i}/${j} )
-                fi
-            fi
-        done
-    done
-fi
+btrfs_snaps_do    "${fs_list}"
+btrfs_snaps_rm_if "${fs_list}"
 
 # vim: set expandtab:ts=4:sw=4
