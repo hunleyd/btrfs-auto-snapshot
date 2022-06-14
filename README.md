@@ -21,7 +21,7 @@ filesystem being snapped and are read-only by default.
 
 Requirements
 ------------
-GNU Bash
+GNU Bash (with associative arrays)
 <br>GNU Coreutils
 <br>GNU grep
 <br>GNU gawk
