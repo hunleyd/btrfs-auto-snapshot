@@ -19,6 +19,10 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+# Define our version
+version=2.0.1
+
+# Define various error codes
 ERR_SUCCESS=0
 ERR_STDIN_EMPTY=1
 ERR_MISSING_SYS_REQS=2
@@ -58,6 +62,8 @@ check_sys_reqs()
 
 usage()
 {
+    echo "$0 $version"
+    echo
     echo "Usage: $0 [options] [-l label] <'//' | name [name...]>
     -d, --debug         Print debugging messages
     -g, --syslog        Write to syslog
@@ -176,6 +182,7 @@ argsp_cmdline()
     ret_val[quiet]=''
     ret_val[writeable]='-r'
     ret_val[paths]=''
+    ret_val[help]=''
 
     while [ $# -gt 0 ]
     do
@@ -191,9 +198,8 @@ argsp_cmdline()
                 shift 1
             ;;
             (-h|--help)
-                usage
-                argsp_cmdline_exit=${ERR_SUCCESS}
-                kill -SIGUSR1 $$
+                ret_val[help]=1
+                shift 1
             ;;
             (-k|--keep)
                 if ! test $2 -gt 0 2>/dev/null
@@ -257,9 +263,13 @@ argsp_cmdline()
 
     if [ $# -eq 0 ]
     then
-        log error "The filesystem argument list is empty."
-        argsp_cmdline_exit=${ERR_FS_MISSING}
-        kill -SIGUSR1 $$
+        if [ -z $ret_val[help] ]
+        then
+            log error "The filesystem argument list is empty."
+            log error "Please see $0 --help."
+            argsp_cmdline_exit=${ERR_FS_MISSING}
+            kill -SIGUSR1 $$
+        fi
     fi
 
     # Count the number of times '//' appears on the command line.
@@ -436,6 +446,13 @@ use_syslog="${cmdline[use_syslog]}"
 verbose="${cmdline[verbose]}"
 quiet="${cmdline[quiet]}"
 writeable="${cmdline[writable]}"
+help="${cmdline[help]}"
+
+if [ "$help" -eq 1 ]
+then
+    usage
+    exit $ERR_SUCCESS
+fi
 
 snapname=${prefix}_${label}-$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
