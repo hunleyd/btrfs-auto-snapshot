@@ -151,7 +151,7 @@ argsp_stdin_to_array()
             continue
         fi
 
-        ret_val+=(${line})
+        ret_val+=("${line}")
     done <<< "${stdin}"
 
     if [ ${#ret_val[@]} -eq 0 ]
@@ -336,10 +336,11 @@ btrfs_subvols_calc()
     local -r array_txt="$(argsp_stdin_to_array)"
     eval "declare -a mps=${array_txt}"
 
+    # shellcheck disable=SC2154
     for mp in "${mps[@]}"
     do
         # The mountpoint itself obviously is a subvolume of interest as well already.
-        ret_val+=(${mp})
+        ret_val+=("${mp}")
 
         local subvols; subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
 
