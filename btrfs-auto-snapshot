@@ -395,9 +395,9 @@ btrfs_snaps_do()
         # the actual snapshot itself at all. Is bit difficult to understand when
         # happening especially during tests, so might check if the desired snapshot exists
         # already.
-        log notice $( ${dry_run} btrfs subvolume snapshot \
+        log notice "$( ${dry_run} btrfs subvolume snapshot \
             ${writeable} "${i}" \
-            "${i%/}/.btrfs/${snapname}" )
+            "${i%/}/.btrfs/${snapname}" )"
     done
 }
 
@@ -434,8 +434,8 @@ btrfs_snaps_rm_if()
             fs_keep=$(( ${fs_keep} - 1 ))
             if [ ${fs_keep} -lt 0 ]
             then
-                log notice $( ${dry_run} btrfs subvolume \
-                    delete -c "${i}"/"${j}" )
+                log notice "$( ${dry_run} btrfs subvolume \
+                    delete -c "${i}"/"${j}" )"
             fi
         done <<< "${paths}"
     done
