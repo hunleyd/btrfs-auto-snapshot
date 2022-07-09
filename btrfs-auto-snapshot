@@ -87,38 +87,38 @@ log()
 
     case $LEVEL in
         (eme*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge -- $*
-            echo Emergency: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge -- "$*"
+            echo Emergency: "$*" 1>&2
             ;;
         (ale*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert -- $*
-            echo Alert: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert -- "$*"
+            echo Alert: "$*" 1>&2
             ;;
         (cri*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit -- $*
-            echo Critical: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit -- "$*"
+            echo Critical: "$*" 1>&2
             ;;
         (err*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.err -- $*
-            echo Error: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.err -- "$*"
+            echo Error: "$*" 1>&2
             ;;
         (war*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn -- $*
-            echo Warning: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn -- "$*"
+            echo Warning: "$*" 1>&2
             ;;
         (not*)
-            test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice -- $*
-            test -n "$verbose" && echo Notice: $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice -- "$*"
+            test -n "$verbose" && echo Notice: "$*" 1>&2
             ;;
         (inf*)
-            test -n "$verbose" && echo $*
+            test -n "$verbose" && echo "$*"
             ;;
         (deb*)
-            test -n "$debug" && echo Debug: $*
+            test -n "$debug" && echo Debug: "$*"
             ;;
         (*)
-            test -n "$use_syslog" && logger -t "$prefix" -- $*
-            echo $* 1>&2
+            test -n "$use_syslog" && logger -t "$prefix" -- "$*"
+            echo "$*" 1>&2
             ;;
     esac
 }
@@ -204,7 +204,7 @@ argsp_cmdline()
                 shift 1
             ;;
             (-k|--keep)
-                if ! test $2 -gt 0 2>/dev/null
+                if ! test "$2" -gt 0 2>/dev/null
                 then
                     log error "The $1 parameter must be a positive integer."
                     argsp_cmdline_exit=${ERR_KEEP_NEGATIVE}
@@ -357,7 +357,7 @@ btrfs_subvols_calc()
 
             if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
             then
-                ret_val+=(${abs_path})
+                ret_val+=("${abs_path}")
             fi
         done <<< "${subvols}"
     done
@@ -378,7 +378,7 @@ btrfs_snaps_do()
 
     for i in $fs_list
     do
-        printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo ${i})
+        printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo "${i}")
         if [ $? -ne 0 ]
         then
             log err "It appears that '${i}' is not a BTRFS filesystem!"
@@ -435,7 +435,7 @@ btrfs_snaps_rm_if()
             if [ ${fs_keep} -lt 0 ]
             then
                 log notice $( ${dry_run} btrfs subvolume \
-                    delete -c ${i}/${j} )
+                    delete -c "${i}"/"${j}" )
             fi
         done <<< "${paths}"
     done
