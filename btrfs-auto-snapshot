@@ -53,6 +53,7 @@ writeable='-r'
 check_sys_reqs()
 {
     unset assoc
+    # shellcheck disable=SC2034
     if ! declare -A assoc 2> /dev/null
     then
         echo "Associative arrays not supported! At least BASH 4 needed."
