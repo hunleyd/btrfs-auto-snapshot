@@ -279,7 +279,7 @@ argsp_cmdline()
 
     if [ $# -eq 0 ]
     then
-        if [ -z "${ret_val[help]}" ]
+        if [ "${ret_val[help]}" -eq 0 ]
         then
             log error "The filesystem argument list is empty."
             log error "Please see $0 --help."
