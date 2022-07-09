@@ -291,7 +291,7 @@ argsp_cmdline()
     local slashies=0
     for i in "$@"
     do
-         test "$i" = '//' && slashies=$(( $slashies + 1 ))
+         test "$i" = '//' && slashies=$(( slashies + 1 ))
     done
 
     if [ $# -gt 1 -a $slashies -gt 0 ]
@@ -431,7 +431,7 @@ btrfs_snaps_rm_if()
                 continue
             fi
 
-            fs_keep=$(( ${fs_keep} - 1 ))
+            fs_keep=$(( fs_keep - 1 ))
             if [ ${fs_keep} -lt 0 ]
             then
                 log notice "$( ${dry_run} btrfs subvolume \
