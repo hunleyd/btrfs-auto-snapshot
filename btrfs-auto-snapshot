@@ -126,13 +126,14 @@ log()
 ##
 # {@code STDIN} can only be consumed once, so read and return it here for later processing.
 #
-# The current approach is to have one argument per line, so we are iterating all of those already,
-# remove empty lines, comments etc. and are able to check if anything was read at all in the end. If
-# not, this is most likely an error, as it doesn't make much sense to explicitly call us, so the
-# script is aborted.
+# The current approach is to have one argument per line, so we are iterating all of those
+# already, remove empty lines, comments etc. and are able to check if anything was read at
+# all in the end. If not, this is most likely an error, as it doesn't make much sense to
+# explicitly call us, so the script is aborted.
 #
 # @return {@code [0]="..." [1]="..." [...]}
-# @see <a href="https://stackoverflow.com/a/16843375/2055163">How to return an array in bash without using globals?</a>
+# @see <a href="https://stackoverflow.com/a/16843375/2055163">How to return an array in
+# bash without using globals?</a>
 #
 argsp_stdin_to_array()
 {
@@ -163,10 +164,10 @@ argsp_stdin_to_array()
 }
 
 ##
-# Parse and set command line arguments, posisbly aborting in case of errors or missing paths to
-# actually work with.
+# Parse and set command line arguments, posisbly aborting in case of errors or missing
+# paths to actually work with.
 #
-# @param[in] Callers need t5o forward {@code $@}!
+# @param[in] Callers need to forward {@code $@}!
 # return     Associative array with all options and parsed paths.
 #
 argsp_cmdline()
@@ -307,9 +308,10 @@ argsp_cmdline()
 ##
 # Exit with the code stored in {@code argsp_cmdline_exit}.
 #
-# The corresponding parser function needs to be called as a subshell to be able to process the
-# returned list of paths to work with. So exit within that function doesn't work easily, which is
-# worked around by using a special global variable and {@code kill} with {@code trap}.
+# The corresponding parser function needs to be called as a subshell to be able to process
+# the returned list of paths to work with. So exit within that function doesn't work
+# easily, which is worked around by using a special global variable and {@code kill} with
+# {@code trap}.
 #
 argsp_cmdline_exit_handler()
 {
@@ -319,11 +321,11 @@ argsp_cmdline_exit_handler()
 ##
 # Calculate all BTRFS subvolumes based on all mounted BTRFS file systems.
 #
-# "zfs-auto-snapshot" is not only able to snapshot all pools, but as well all individual datasets
-# when using "//" as path. This function actually allows the same approach by not only looking at
-# mountpounts for BTRFS file systems, but their contained subvolumes as well. By default, each and
-# every subvolume simply gets a ".btrfs" directory to take snapshots and snapshots themself are of
-# course excluded here.
+# "zfs-auto-snapshot" is not only able to snapshot all pools, but as well all individual
+# datasets when using "//" as path. This function actually allows the same approach by not
+# only looking at mountpounts for BTRFS file systems, but their contained subvolumes as
+# well. By default, each and every subvolume simply gets a ".btrfs" directory to take
+# snapshots and snapshots themself are of course excluded here.
 #
 # @stdin  BTRFS file systems of interest, one per line.
 # @return All subvolumes, one per line.
@@ -341,10 +343,10 @@ btrfs_subvols_calc()
 
         local subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
 
-        # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most likely. So
-        # check for these attributes, which seems easier than to exclude all currently available
-        # snapshots by their paths. That output doesn't include leading slashes, their common
-        # directory might change its name etc.
+        # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
+        # likely. So check for these attributes, which seems easier than to exclude all
+        # currently available snapshots by their paths. That output doesn't include
+        # leading slashes, their common directory might change its name etc.
         while IFS= read -r subvol
         do
             local abs_path="$(echo ${mp}/${subvol} | sed -r 's!^//!/!')"
@@ -388,10 +390,11 @@ btrfs_snaps_do()
             ${dry_run} mkdir "${i}/.btrfs"
         fi
 
-        # TODO Creating snapshots too frequently so that names overlap with an existing one, result
-        # in some error message about read-only file system, not mentioning the actual snapshot
-        # itself at all. Is bit difficult to understand when happening especially during tests, so
-        # might check if the desired snapshot exists already.
+        # TODO Creating snapshots too frequently so that names overlap with an existing
+        # one, result in some error message about read-only file system, not mentioning
+        # the actual snapshot itself at all. Is bit difficult to understand when
+        # happening especially during tests, so might check if the desired snapshot exists
+        # already.
         log notice $( ${dry_run} btrfs subvolume snapshot \
             ${writeable} "${i}" \
             "${i%/}/.btrfs/${snapname}" )
