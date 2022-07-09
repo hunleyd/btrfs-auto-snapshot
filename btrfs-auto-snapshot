@@ -151,6 +151,7 @@ argsp_stdin_to_array()
             continue
         fi
 
+        # shellcheck disable=SC2190
         ret_val+=("${line}")
     done <<< "${stdin}"
 
@@ -340,6 +341,7 @@ btrfs_subvols_calc()
     for mp in "${mps[@]}"
     do
         # The mountpoint itself obviously is a subvolume of interest as well already.
+        # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
         local subvols; subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
@@ -358,6 +360,7 @@ btrfs_subvols_calc()
 
             if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
             then
+                # shellcheck disable=SC2190
                 ret_val+=("${abs_path}")
             fi
         done <<< "${subvols}"
