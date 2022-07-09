@@ -3,7 +3,7 @@
 ##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
-# Copyright 2014 Doug Hunley <doug.hunley@gmail.com>
+# Copyright 2014-2022 Doug Hunley <doug.hunley@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
