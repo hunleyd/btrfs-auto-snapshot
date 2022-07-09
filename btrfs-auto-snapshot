@@ -176,7 +176,7 @@ argsp_cmdline()
     ret_val[debug]=''
     ret_val[dry_run]=''
     ret_val[keep]=''
-    ret_val[label]=''
+    ret_val[label]='adhoc'
     ret_val[prefix]='btrfs-auto-snap'
     ret_val[use_syslog]=''
     ret_val[verbose]=''
@@ -214,6 +214,19 @@ argsp_cmdline()
                 shift 2
             ;;
             (-l|--label)
+                label="$2"
+                while test "${label}" -gt 0
+                do
+                    case $label in
+                        ([![:alnum:]_.:\ -]*)
+                            log error "The $1 parameter must be alphanumeric."
+                            argsp_cmdline_exit=${ERR_PREFIX_WRONG}
+                            kill -SIGUSR1 $$
+                        ;;
+                    esac
+                    prefix="${prefix#?}"
+                done
+
                 ret_val[label]="$2"
                 shift 2
             ;;
@@ -455,7 +468,7 @@ then
     exit $ERR_SUCCESS
 fi
 
-snapname=${prefix}_${label}-$(date +%F-%H%M)
+snapname=${prefix}_${label}_$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
 
 btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}' | btrfs_subvols_calc)
