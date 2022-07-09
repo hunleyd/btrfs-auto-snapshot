@@ -295,7 +295,7 @@ argsp_cmdline()
          test "$i" = '//' && slashies=$(( slashies + 1 ))
     done
 
-    if [ $# -gt 1 -a $slashies -gt 0 ]
+    if [ $# -gt 1 ] && [ $slashies -gt 0 ]
     then
         log error "The // must be the only argument if it is given."
         argsp_cmdline_exit=${ERR_FS_SLASHIES}
