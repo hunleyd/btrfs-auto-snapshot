@@ -302,7 +302,7 @@ argsp_cmdline()
         kill -SIGUSR1 $$
     fi
 
-    ret_val[paths]="$@"
+    ret_val[paths]="$*"
     declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
 }
 
@@ -482,7 +482,7 @@ eval "declare -a btrfs_list=${btrfs_list}"
 
 if [ "${cmdline[paths]}" = '//' ]
 then
-    fs_list="${btrfs_list[@]}"
+    fs_list="${btrfs_list[*]}"
 else
     fs_list="${cmdline[paths]}"
 fi
