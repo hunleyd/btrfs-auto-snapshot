@@ -185,7 +185,7 @@ argsp_cmdline()
     ret_val[quiet]=''
     ret_val[writeable]='-r'
     ret_val[paths]=''
-    ret_val[help]=''
+    ret_val[help]='0'
 
     while [ $# -gt 0 ]
     do
