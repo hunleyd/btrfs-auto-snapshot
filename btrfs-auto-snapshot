@@ -146,9 +146,13 @@ argsp_stdin_to_array()
 
     while IFS= read -r line
     do
-        local is_blank; is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
-        local is_comment; is_comment="$(echo "${line}" | grep --count -e '^#')"
-        local is_empty; is_empty="$(  echo "${line}" | grep --count -e '^$')"
+        local is_blank
+        local is_comment
+        local_is_empty
+
+        is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
+        is_comment="$(echo "${line}" | grep --count -e '^#')"
+        is_empty="$(  echo "${line}" | grep --count -e '^$')"
 
         if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
         then
@@ -346,8 +350,11 @@ btrfs_mounts_calc()
 
     while IFS= read -r mp
     do
-        local path="$(  echo "${mp}" | awk '{print $2}')"
-        local subvol="$(echo "${mp}" | sed -r "s/${sed_find}/\1/")"
+        local path
+        local subvol
+
+        path="$(  echo "${mp}" | awk '{print $2}')"
+        subvol="$(echo "${mp}" | sed -r "s/${sed_find}/\1/")"
 
         ret_val[${path}]="${subvol}"
     done <<< "${mps}"
@@ -375,13 +382,15 @@ btrfs_subvols_calc()
     # shellcheck disable=SC2154
     for mp in "${!mps[@]}"
     do
+        local subvols
+
         # The mountpoint itself obviously is a subvolume of interest as well already.
         # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
         # The following seems to return relative paths based to the BTRFS root always,
         # which might be empty or "@" or ... and is different to the filesystem root "/".
-        local subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
+        subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
         # likely. So check for these attributes, which seems easier than to exclude all
@@ -416,15 +425,21 @@ btrfs_subvols_calc()
                 continue
             fi
 
-            # Map subvolume path to filesystem path.
-            local abs_path="$(echo "${mp}${subvol}")"
-                  abs_path="$(echo "${abs_path}" | sed -r "s!^${mps[${mp}]}!${mp}!")"
-                  abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+            local abs_path
+            local show
+            local sp
+            local no_parenbt_uuid
+            local is_read_only
 
-            local show="$(btrfs subvolume show "${abs_path}")"
-            local sp='[[:space:]]+'
-            local no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
-            local is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
+            # Map subvolume path to filesystem path.
+            abs_path="$(echo "${mp}${subvol}")"
+            abs_path="$(echo "${abs_path}" | sed -r "s!^${mps[${mp}]}!${mp}!")"
+            abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+
+            show="$(btrfs subvolume show "${abs_path}")"
+            sp='[[:space:]]+'
+            no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
+            is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
 
             if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
             then
@@ -493,13 +508,18 @@ btrfs_snaps_rm_if()
     for i in $fs_list
     do
         fs_keep="${keep}"
+        subvol="${mps[${i}]}"
+        subvol="$(echo "${subvol}" | sed -r 's!^/!!')"
+
         snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
+        paths="$(echo "${paths}" | sed  -r "s!^${subvol}!${i}!")"
+        paths="$(echo "${paths}" | sed  -r "s!^//!/!")"
         paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
 
         while IFS= read -r j
         do
-            if [ -n "${j#"$snapglob"}" ]
+            if [ -z "${j#"$snapglob"}" ]
             then
                 continue
             fi
@@ -507,8 +527,7 @@ btrfs_snaps_rm_if()
             fs_keep=$(( fs_keep - 1 ))
             if [ ${fs_keep} -lt 0 ]
             then
-                log notice "$( ${dry_run} btrfs subvolume \
-                    delete -c "${i}"/"${j}" )"
+                log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
             fi
         done <<< "${paths}"
     done
