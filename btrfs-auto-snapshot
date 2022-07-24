@@ -536,7 +536,6 @@ btrfs_snaps_rm_if()
 
         while IFS= read -r j
         do
-
             if [ -z "${j#"$snapglob"}" ]
             then
                 continue
