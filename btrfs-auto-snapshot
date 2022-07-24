@@ -40,15 +40,17 @@ ERR_FS_NO_BTRFS=135
 trap argsp_cmdline_exit_handler SIGUSR1
 
 # set defaults
+DEF_SNAPS_DIR='.btrfs'
+
 argsp_cmdline_exit="${ERR_SUCCESS}"
 debug=''
 dry_run=''
 keep=''
 label=''
 prefix='btrfs-auto-snap'
+quiet=''
 use_syslog=''
 verbose=''
-quiet=''
 writeable='-r'
 
 ##
@@ -420,20 +422,26 @@ btrfs_subvols_calc()
             fi
 
             local abs_path
-            local show
-            local sp
-            local no_parent_uuid
-            local is_read_only
+            local pattern
+            local matches
 
             # Map subvolume path to filesystem path.
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
 
             # Ignore all subvolumes being children and handled as mountpoints already.
-            if printf "%s\n" "${!mps[@]}" | grep -F -f - -x -q <(echo "${abs_path}")
+            pattern="$(printf "%s\n" "${!mps[@]}")"
+            matches="$(echo "${pattern}" | grep --count -F -f - -x <(echo "${abs_path}"))"
+
+            if [ "${matches}" != '0' ]
             then
                 continue
             fi
+
+            local show
+            local sp
+            local no_parent_uuid
+            local is_read_only
 
             show="$(btrfs subvolume show "${abs_path}")"
             sp='[[:space:]]+'
@@ -464,7 +472,10 @@ btrfs_wrk_paths_check()
 
     for i in $wrk_paths
     do
-        if ! echo "${patterns}" | grep -F -f - -q -x <(echo "${i}")
+        local matches
+
+        matches="$(echo "${patterns}" | grep --count -F -f - -x <(echo "${i}"))"
+        if [ "${matches}" = '0' ]
         then
             log err "It appears that '${i}' is not a BTRFS filesystem!"
             exit ${ERR_FS_NO_BTRFS}
@@ -485,9 +496,9 @@ btrfs_snaps_do()
 
     for i in $wrk_paths
     do
-        if [ ! -d "${i}/.btrfs" ]
+        if [ ! -d "${i}/${DEF_SNAPS_DIR}" ]
         then
-            ${dry_run} mkdir "${i}/.btrfs"
+            ${dry_run} mkdir "${i}/${DEF_SNAPS_DIR}"
         fi
 
         # TODO Creating snapshots too frequently so that names overlap with an existing
@@ -497,7 +508,7 @@ btrfs_snaps_do()
         # already.
         log notice "$( ${dry_run} btrfs subvolume snapshot \
             ${writeable} "${i}" \
-            "${i%/}/.btrfs/${snapname}" )"
+            "${i%/}/${DEF_SNAPS_DIR}/${snapname}" )"
     done
 }
 
@@ -530,9 +541,9 @@ btrfs_snaps_rm_if()
         # it's somewhat safe to remove based on conventions.
         snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
-        paths="$(echo "${paths}" | sed     '#/.btrfs/#!d')"
-        paths="$(echo "${paths}" | sed  -r "s!^.+/.btrfs/!${i}/.btrfs/!")"
-        paths="$(echo "${paths}" | sed  -r "s!^//.btrfs/!/.btrfs/!")"
+        paths="$(echo "${paths}" | sed     "#/${DEF_SNAPS_DIR}/#!d")"
+        paths="$(echo "${paths}" | sed  -r "s!^.+/${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r "s!^//${DEF_SNAPS_DIR}/!/${DEF_SNAPS_DIR}/!")"
 
         while IFS= read -r j
         do
@@ -565,14 +576,15 @@ eval "declare -A cmdline=${cmdline}"
 
 debug="${cmdline[debug]}"
 dry_run="${cmdline[dry_run]}"
+help="${cmdline[help]}"
 keep="${cmdline[keep]}"
 label="${cmdline[label]}"
 prefix="${cmdline[prefix]}"
+quiet="${cmdline[quiet]}"
 use_syslog="${cmdline[use_syslog]}"
 verbose="${cmdline[verbose]}"
-quiet="${cmdline[quiet]}"
 writeable="${cmdline[writable]}"
-help="${cmdline[help]}"
+
 
 if [ "$help" -eq 1 ]
 then
@@ -581,7 +593,7 @@ then
 fi
 
 snapname=${prefix}_${label}_$(date +%F-%H%M)
-snapglob=".btrfs/${prefix}_${label}????????????????"
+snapglob="${DEF_SNAPS_DIR}/${prefix}_${label}????????????????"
 
 btrfs_mounts="$(btrfs_mounts_calc)"
 btrfs_subvols_txt="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
@@ -594,7 +606,7 @@ else
     wrk_paths="${cmdline[paths]}"
 fi
 
-btrfs_wrk_paths_check "${wrk_paths}"
+btrfs_wrk_paths_check "${wrk_paths}" <<< "${btrfs_subvols_txt}"
 btrfs_snaps_do        "${wrk_paths}"
 btrfs_snaps_rm_if     "${wrk_paths}"
 
