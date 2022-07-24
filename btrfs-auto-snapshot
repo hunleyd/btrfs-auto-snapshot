@@ -82,7 +82,7 @@ usage()
     -q, --quiet         Suppress warning and notices on STDOUT
     -v, --verbose       Print info messages
     -w, --writeable     Create writeable snapshots instead of read-only
-    name                Filesystem name(s), or '//' for all filesystems
+    name                File system name(s), or '//' for all file systems
 "
 }
 
@@ -291,7 +291,7 @@ argsp_cmdline()
     then
         if [ "${ret_val[help]}" -eq 0 ]
         then
-            log error "The filesystem argument list is empty."
+            log error "The file system argument list is empty."
             log error "Please see $0 --help."
             argsp_cmdline_exit=${ERR_FS_MISSING}
             kill -SIGUSR1 $$
@@ -395,7 +395,7 @@ btrfs_subvols_calc()
         ret_val+=("${mp}")
 
         # The following seems to return relative paths based to the BTRFS root always,
-        # which might be empty or "@" or ... and is different to the filesystem root "/".
+        # which might be empty or "@" or ... and is different to the file system root "/".
         mp_subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
@@ -406,7 +406,7 @@ btrfs_subvols_calc()
         # Some found subvolumes might be children of the current mountpoint, but still be
         # mounted somewhere else on their own and therefore need to be ignored, as all
         # mountpoints get processed individually already. To make things worse, paths in
-        # the filesystem expected by some BTRFS-tools might be different than the path of
+        # the file system expected by some BTRFS-tools might be different than the path of
         # some subvolume from BTRFS's perspective and as output by some tools like "list".
         # So resulting paths need to be build by using the current mountpoint, it's own
         # subvolume path and the currently processed subvolume.
@@ -425,7 +425,7 @@ btrfs_subvols_calc()
             local pattern
             local matches
 
-            # Map subvolume path to filesystem path.
+            # Map subvolume path to file system path.
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
 
@@ -477,7 +477,7 @@ btrfs_wrk_paths_check()
         matches="$(echo "${patterns}" | grep --count -F -f - -x <(echo "${i}"))"
         if [ "${matches}" = '0' ]
         then
-            log err "It appears that '${i}' is not a BTRFS filesystem!"
+            log err "It appears that '${i}' is not a BTRFS file system!"
             exit ${ERR_FS_NO_BTRFS}
         fi
     done
@@ -487,10 +487,12 @@ btrfs_wrk_paths_check()
 # Create snapshots using the paths
 #
 # @param[in] The paths to work with.
+# @param[in] Snapshot name to create.
 #
 btrfs_snaps_do()
 {
     local -r wrk_paths="${1:?No paths given.}"
+    local -r snap_name="${2:?No snap name given.}"
 
     log info "Doing snapshots of $wrk_paths"
 
@@ -508,7 +510,7 @@ btrfs_snaps_do()
         # already.
         log notice "$( ${dry_run} btrfs subvolume snapshot \
             ${writeable} "${i}" \
-            "${i%/}/${DEF_SNAPS_DIR}/${snapname}" )"
+            "${i%/}/${DEF_SNAPS_DIR}/${snap_name}" )"
     done
 }
 
@@ -516,6 +518,7 @@ btrfs_snaps_do()
 # Cleanup snapshots depending on how many to keep and if to cleanup at all.
 #
 # @param[in] The paths to work with.
+# @param[in] Pattern to find snapshot names for the current prefix and label.
 #
 btrfs_snaps_rm_if()
 {
@@ -525,13 +528,12 @@ btrfs_snaps_rm_if()
     fi
 
     local -r wrk_paths="${1:?No paths given.}"
+    local -r snap_patt="${2:?No snap pattern given.}"
 
     log info "Destroying all but the newest ${keep} snapshots"
 
     for i in $wrk_paths
     do
-        fs_keep="${keep}"
-
         # We are only interested in snaps this time, which follow a hard-coded naming
         # scheme currently. This makes it easy to ignore all subvolumes being children of
         # the current path for some reason and therefore present in the output. We either
@@ -541,22 +543,15 @@ btrfs_snaps_rm_if()
         # it's somewhat safe to remove based on conventions.
         snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
-        paths="$(echo "${paths}" | sed     "#/${DEF_SNAPS_DIR}/#!d")"
+        paths="$(echo "${paths}" | sed     "\#/${DEF_SNAPS_DIR}/#!d")"
         paths="$(echo "${paths}" | sed  -r "s!^.+/${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
         paths="$(echo "${paths}" | sed  -r "s!^//${DEF_SNAPS_DIR}/!/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r "\#/${DEF_SNAPS_DIR}/${snap_patt}#!d")"
+        paths="$(echo "${paths}" | tail -n "+$((keep + 1))")"
 
         while IFS= read -r j
         do
-            if [ -z "${j#"$snapglob"}" ]
-            then
-                continue
-            fi
-
-            fs_keep=$(( fs_keep - 1 ))
-            if [ ${fs_keep} -lt 0 ]
-            then
-                log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
-            fi
+            log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
         done <<< "${paths}"
     done
 }
@@ -592,8 +587,9 @@ then
     exit $ERR_SUCCESS
 fi
 
-snapname=${prefix}_${label}_$(date +%F-%H%M)
-snapglob="${DEF_SNAPS_DIR}/${prefix}_${label}????????????????"
+snap_name="${prefix}_${label}_$(date +%F-%H%M)"
+snap_patt='[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}-[[:digit:]]{4}'
+snap_patt="${prefix}_${label}_${snap_patt}"
 
 btrfs_mounts="$(btrfs_mounts_calc)"
 btrfs_subvols_txt="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
@@ -607,7 +603,7 @@ else
 fi
 
 btrfs_wrk_paths_check "${wrk_paths}"
-btrfs_snaps_do        "${wrk_paths}"
-btrfs_snaps_rm_if     "${wrk_paths}"
+btrfs_snaps_do        "${wrk_paths}" "${snap_name}"
+btrfs_snaps_rm_if     "${wrk_paths}" "${snap_patt}"
 
 # vim: set expandtab:ts=4:sw=4
