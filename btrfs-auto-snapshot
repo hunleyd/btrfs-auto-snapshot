@@ -415,26 +415,21 @@ btrfs_subvols_calc()
                 continue
             fi
 
-            # Ignore all subvolumes being children and handled as mountpoints already.
-            if printf "%s\n" "${mps[@]}" | grep -F -f - -q <(echo "${subvol}")
-            then
-                continue
-            fi
-            if printf "%s\n" "${mps[@]}" | grep -F -f - -q <(echo "/${subvol}")
-            then
-                continue
-            fi
-
             local abs_path
             local show
             local sp
-            local no_parenbt_uuid
+            local no_parent_uuid
             local is_read_only
 
             # Map subvolume path to filesystem path.
-            abs_path="$(echo "${mp}${subvol}")"
-            abs_path="$(echo "${abs_path}" | sed -r "s!^${mps[${mp}]}!${mp}!")"
+            abs_path="$(echo "/${subvol}"  | sed -r "s!^${mps[${mp}]}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+
+            # Ignore all subvolumes being children and handled as mountpoints already.
+            if printf "%s\n" "${!mps[@]}" | grep -F -f - -x -q <(echo "${abs_path}")
+            then
+                continue
+            fi
 
             show="$(btrfs subvolume show "${abs_path}")"
             sp='[[:space:]]+'
