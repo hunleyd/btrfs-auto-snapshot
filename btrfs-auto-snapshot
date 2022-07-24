@@ -388,8 +388,8 @@ btrfs_subvols_calc()
         local mp_subvols
 
         # The mountpoint itself obviously is a subvolume of interest as well already.
-        # shellcheck disable=SC2190
         mp_subvol="${mps[${mp}]}"
+        # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
         # The following seems to return relative paths based to the BTRFS root always,
@@ -459,6 +459,7 @@ btrfs_subvols_calc()
 btrfs_wrk_paths_check()
 {
     local -r wrk_paths="${1:?No paths given.}"
+    # shellcheck disable=SC2154
     local -r patterns="$(printf "%s\n" "${btrfs_subvols[@]}")"
 
     for i in $wrk_paths
