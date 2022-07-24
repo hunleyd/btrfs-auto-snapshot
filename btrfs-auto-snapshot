@@ -148,7 +148,7 @@ argsp_stdin_to_array()
     do
         local is_blank
         local is_comment
-        local_is_empty
+        local is_empty
 
         is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
         is_comment="$(echo "${line}" | grep --count -e '^#')"
