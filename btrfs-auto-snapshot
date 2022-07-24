@@ -19,6 +19,10 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+#set -o errexit
+#set -o functrace
+#set -o xtrace
+
 # Define our version
 version=2.0.2
 
@@ -320,6 +324,38 @@ argsp_cmdline_exit_handler()
 }
 
 ##
+# Calculate the BTRFS-mountpoints to start looking at things from.
+#
+# The important thing to note is that BTRFS layouts can be VERY different: Some systems use
+# multiple mountpoints for multiple subvolumes, some use only one mountpoint, because all
+# the subvolumes of interest are children of that path already, the names of subvolumes in
+# BTRFS might be different from the path they are mounted too etc. Though, it's totally OK
+# to mix mounted and unmounted subvolumes, while at some point we need to distinguish them.
+# This is done by storing the mountpoints, which we assume to always be subvolumes, else
+# individual mounpoints don't make too much sense, and their corresponding subvolume path.
+# When retrieving all subvolumes of all mountpoints, this allows removing already known
+# child subvolumes which are mountpoints on their own already and processed as such.
+#
+# @return Associative array mapping individual mountpoints and their subvolumes.
+#
+btrfs_mounts_calc()
+{
+    local -r mps="$(grep 'btrfs' '/proc/mounts')"
+    local -r sed_find='^.+,subvol=([^ ]+) .+$'
+    local -A ret_val
+
+    while IFS= read -r mp
+    do
+        local path="$(  echo "${mp}" | awk '{print $2}')"
+        local subvol="$(echo "${mp}" | sed -r "s/${sed_find}/\1/")"
+
+        ret_val[${path}]="${subvol}"
+    done <<< "${mps}"
+
+    declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
+}
+
+##
 # Calculate all BTRFS subvolumes based on all mounted BTRFS file systems.
 #
 # "zfs-auto-snapshot" is not only able to snapshot all pools, but as well all individual
@@ -328,35 +364,67 @@ argsp_cmdline_exit_handler()
 # well. By default, each and every subvolume simply gets a ".btrfs" directory to take
 # snapshots and snapshots themself are of course excluded here.
 #
-# @stdin  BTRFS file systems of interest, one per line.
+# @stdin  Associative array mapping mountpoints and their subvolume.
 # @return All subvolumes, one per line.
 #
 btrfs_subvols_calc()
 {
     local -a ret_val=()
-    local -r array_txt="$(argsp_stdin_to_array)"
-    eval "declare -a mps=${array_txt}"
+    eval "declare -A mps=$(cat '/dev/stdin')"
 
     # shellcheck disable=SC2154
-    for mp in "${mps[@]}"
+    for mp in "${!mps[@]}"
     do
         # The mountpoint itself obviously is a subvolume of interest as well already.
         # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
-        local subvols; subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
+        # The following returns subvolume paths relative to the given path, which needs to
+        # be kept in mind when comparing things!
+        local subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
         # likely. So check for these attributes, which seems easier than to exclude all
         # currently available snapshots by their paths. That output doesn't include
         # leading slashes, their common directory might change its name etc.
+        #
+        # Some found subvolumes might be children of the current mountpoint, but still be
+        # mounted somewhere else on their own and therefore need to be ignored, as all
+        # mountpoints get processed individually already. To make things worse, paths in
+        # the filesystem expected by some BTRFS-tools might be different than the path of
+        # some subvolume from BTRFS's perspective and as output by some tools like "list".
+        # So resulting paths need to be build by using the current mountpoint, it's own
+        # subvolume path and the currently processed subvolume.
+        #
+        # mps[/]="/@" -> possibly containing "/btrfs_test" as "/@/btrfs_test"
+        # mps[/usr/local]="/@/usr/local"
         while IFS= read -r subvol
         do
-            local abs_path; abs_path="$(echo "${mp}"/"${subvol}" | sed -r 's!^//!/!')"
-            local show; show="$(btrfs subvolume show "${abs_path}")"
+            # TODO Should the following check for emptyness be necessary?!
+            if [ -z "${subvol}" ]
+            then
+                continue
+            fi
+
+            # Ignore subvolumes being children and mountpoints at the same time.
+            if printf "%s\n" "${mps[@]}" | grep -F -f - -q -x <(echo "${subvol}")
+            then
+                continue
+            fi
+            if printf "%s\n" "${mps[@]}" | grep -F -f - -q -x <(echo "/${subvol}")
+            then
+                continue
+            fi
+
+            # Map subvolume path to filesystem path.
+            local abs_path="$(echo "${mp}${subvol}")"
+                  abs_path="$(echo "${abs_path}" | sed -r "s!^${mps[${mp}]}!${mp}!")"
+                  abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+
+            local show="$(btrfs subvolume show "${abs_path}")"
             local sp='[[:space:]]+'
-            local no_parent_uuid; no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
-            local is_read_only; is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
+            local no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
+            local is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
 
             if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
             then
@@ -477,7 +545,7 @@ fi
 snapname=${prefix}_${label}_$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
 
-btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}' | btrfs_subvols_calc)
+btrfs_list="$(btrfs_mounts_calc | btrfs_subvols_calc)"
 eval "declare -a btrfs_list=${btrfs_list}"
 
 if [ "${cmdline[paths]}" = '//' ]
