@@ -606,7 +606,7 @@ else
     wrk_paths="${cmdline[paths]}"
 fi
 
-btrfs_wrk_paths_check "${wrk_paths}" <<< "${btrfs_subvols_txt}"
+btrfs_wrk_paths_check "${wrk_paths}"
 btrfs_snaps_do        "${wrk_paths}"
 btrfs_snaps_rm_if     "${wrk_paths}"
 
