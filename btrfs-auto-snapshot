@@ -378,7 +378,7 @@ btrfs_mounts_calc()
 #
 btrfs_subvols_calc()
 {
-    local -a ret_val
+    local -a ret_val=()
     eval "declare -A mps=$(cat '/dev/stdin')"
 
     # shellcheck disable=SC2154
@@ -454,17 +454,16 @@ btrfs_subvols_calc()
 ##
 # Check if the given paths are BTRFS subvolumes at all.
 #
-# @stdin     Associative array mapping subvolumes and their parent mountpoints.
 # @param[in] The paths to check.
 #
 btrfs_wrk_paths_check()
 {
     local -r wrk_paths="${1:?No paths given.}"
-    eval "declare -a btrfs_subvols=$(cat '/dev/stdin')"
+    local -r patterns="$(printf "%s\n" "${btrfs_subvols[@]}")"
 
     for i in $wrk_paths
     do
-        if ! printf "%s\n" "${btrfs_subvols[@]}" | grep -F -f - -q -x <(echo "${i}")
+        if ! echo "${patterns}" | grep -F -f - -q -x <(echo "${i}")
         then
             log err "It appears that '${i}' is not a BTRFS filesystem!"
             exit ${ERR_FS_NO_BTRFS}
@@ -589,12 +588,12 @@ eval "declare -a btrfs_subvols=${btrfs_subvols_txt}"
 
 if [ "${cmdline[paths]}" = '//' ]
 then
-    wrk_paths="${btrfs_subvols[@]}"
+    wrk_paths="${btrfs_subvols[*]}"
 else
     wrk_paths="${cmdline[paths]}"
 fi
 
-btrfs_wrk_paths_check "${wrk_paths}" <<< "${btrfs_subvols_txt}"
+btrfs_wrk_paths_check "${wrk_paths}"
 btrfs_snaps_do        "${wrk_paths}"
 btrfs_snaps_rm_if     "${wrk_paths}"
 
