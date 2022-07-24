@@ -551,6 +551,12 @@ btrfs_snaps_rm_if()
 
         while IFS= read -r j
         do
+            # TODO Should the following check for emptyness be necessary?!
+            if [ -z "${j}" ]
+            then
+                continue
+            fi
+
             log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
         done <<< "${paths}"
     done
