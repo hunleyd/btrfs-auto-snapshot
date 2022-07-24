@@ -336,7 +336,7 @@ argsp_cmdline_exit_handler()
 # When retrieving all subvolumes of all mountpoints, this allows removing already known
 # child subvolumes which are mountpoints on their own already and processed as such.
 #
-# @return Associative array mapping individual mountpoints and their subvolumes.
+# @return Associative array mapping mountpoints and their subvolumes.
 #
 btrfs_mounts_calc()
 {
@@ -364,7 +364,7 @@ btrfs_mounts_calc()
 # well. By default, each and every subvolume simply gets a ".btrfs" directory to take
 # snapshots and snapshots themself are of course excluded here.
 #
-# @stdin  Associative array mapping mountpoints and their subvolume.
+# @stdin  Associative array mapping mountpoints and their subvolumes
 # @return All subvolumes, one per line.
 #
 btrfs_subvols_calc()
@@ -379,8 +379,8 @@ btrfs_subvols_calc()
         # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
-        # The following returns subvolume paths relative to the given path, which needs to
-        # be kept in mind when comparing things!
+        # The following seems to return relative paths based to the BTRFS root always,
+        # which might be empty or "@" or ... and is different to the filesystem root "/".
         local subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
@@ -406,12 +406,12 @@ btrfs_subvols_calc()
                 continue
             fi
 
-            # Ignore subvolumes being children and mountpoints at the same time.
-            if printf "%s\n" "${mps[@]}" | grep -F -f - -q -x <(echo "${subvol}")
+            # Ignore all subvolumes being children and handled as mountpoints already.
+            if printf "%s\n" "${mps[@]}" | grep -F -f - -q <(echo "${subvol}")
             then
                 continue
             fi
-            if printf "%s\n" "${mps[@]}" | grep -F -f - -q -x <(echo "/${subvol}")
+            if printf "%s\n" "${mps[@]}" | grep -F -f - -q <(echo "/${subvol}")
             then
                 continue
             fi
@@ -473,8 +473,9 @@ btrfs_snaps_do()
 }
 
 ##
-# Cleanup snapshots depending on how many to keep, if to cleanup at all.
+# Cleanup snapshots depending on how many to keep and if to cleanup at all.
 #
+# @stdin     Associative array mapping mountpoints and their subvolumes.
 # @param[in] The paths to work with.
 #
 btrfs_snaps_rm_if()
@@ -485,6 +486,7 @@ btrfs_snaps_rm_if()
     fi
 
     local -r fs_list="${1:?No paths given.}"
+    eval "declare -A mps=$(cat '/dev/stdin')"
 
     log info "Destroying all but the newest ${keep} snapshots"
 
@@ -545,7 +547,8 @@ fi
 snapname=${prefix}_${label}_$(date +%F-%H%M)
 snapglob=".btrfs/${prefix}_${label}????????????????"
 
-btrfs_list="$(btrfs_mounts_calc | btrfs_subvols_calc)"
+btrfs_mounts="$(btrfs_mounts_calc)"
+btrfs_list="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
 eval "declare -a btrfs_list=${btrfs_list}"
 
 if [ "${cmdline[paths]}" = '//' ]
@@ -556,6 +559,6 @@ else
 fi
 
 btrfs_snaps_do    "${fs_list}"
-btrfs_snaps_rm_if "${fs_list}"
+btrfs_snaps_rm_if "${fs_list}" <<< "${btrfs_mounts}"
 
 # vim: set expandtab:ts=4:sw=4
