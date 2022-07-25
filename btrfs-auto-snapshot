@@ -498,19 +498,28 @@ btrfs_snaps_do()
 
     for i in $wrk_paths
     do
-        if [ ! -d "${i}/${DEF_SNAPS_DIR}" ]
+        local snaps_dir
+        local snap_path
+        local snap_opts
+
+        snaps_dir="${i%/}/${DEF_SNAPS_DIR}"
+        snap_path="${snaps_dir}/${snap_name}"
+        snap_opts="${writeable} ${i} ${snap_path}"
+
+        if [ ! -d "${snaps_dir}" ]
         then
-            ${dry_run} mkdir "${i}/${DEF_SNAPS_DIR}"
+            ${dry_run} mkdir "${snaps_dir}"
         fi
 
-        # TODO Creating snapshots too frequently so that names overlap with an existing
-        # one, result in some error message about read-only file system, not mentioning
-        # the actual snapshot itself at all. Is bit difficult to understand when
-        # happening especially during tests, so might check if the desired snapshot exists
-        # already.
-        log notice "$( ${dry_run} btrfs subvolume snapshot \
-            ${writeable} "${i}" \
-            "${i%/}/${DEF_SNAPS_DIR}/${snap_name}" )"
+        # TODO Creating snapshots too frequently might result in their directory names
+        # overlapping, which either results in error messages about read-only file systems
+        # or additional subdirs created in existing snapshot dirs. The latter is a problem
+        # as it prevents deletion of those snapshots because they contain non-snap data.
+        # The following is a workaround for those cases especially making tests easier.
+        # Some better fix might be to check for if the snapshot exists already and don't
+        # create it or use seconds in the names. Needs to be discussed further...
+        log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2> '/dev/null' )"
+        log notice "$( ${dry_run} btrfs subvolume snapshot   ${snap_opts} )"
     done
 }
 
