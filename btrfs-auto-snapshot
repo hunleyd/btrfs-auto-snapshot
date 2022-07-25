@@ -504,6 +504,7 @@ btrfs_snaps_do()
 
         snaps_dir="${i%/}/${DEF_SNAPS_DIR}"
         snap_path="${snaps_dir}/${snap_name}"
+        # shellcheck disable=SC2206
         snap_opts=(${writeable} "${i}" "${snap_path}")
 
         if [ ! -d "${snaps_dir}" ]
