@@ -498,13 +498,13 @@ btrfs_snaps_do()
 
     for i in $wrk_paths
     do
-        local snaps_dir
-        local snap_path
-        local snap_opts
+        local    snaps_dir
+        local    snap_path
+        local -a snap_opts=()
 
         snaps_dir="${i%/}/${DEF_SNAPS_DIR}"
         snap_path="${snaps_dir}/${snap_name}"
-        snap_opts="${writeable} ${i} ${snap_path}"
+        snap_opts=(${writeable} "${i}" "${snap_path}")
 
         if [ ! -d "${snaps_dir}" ]
         then
@@ -519,7 +519,7 @@ btrfs_snaps_do()
         # Some better fix might be to check for if the snapshot exists already and don't
         # create it or use seconds in the names. Needs to be discussed further...
         log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2> '/dev/null' )"
-        log notice "$( ${dry_run} btrfs subvolume snapshot   ${snap_opts} )"
+        log notice "$( ${dry_run} btrfs subvolume snapshot  "${snap_opts[@]}" )"
     done
 }
 
@@ -593,8 +593,7 @@ prefix="${cmdline[prefix]}"
 quiet="${cmdline[quiet]}"
 use_syslog="${cmdline[use_syslog]}"
 verbose="${cmdline[verbose]}"
-writeable="${cmdline[writable]}"
-
+writeable="${cmdline[writeable]}"
 
 if [ "$help" -eq 1 ]
 then
