@@ -19,6 +19,10 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
+#set -o errexit
+#set -o functrace
+#set -o xtrace
+
 # Define our version
 version=2.0.2
 
@@ -36,15 +40,17 @@ ERR_FS_NO_BTRFS=135
 trap argsp_cmdline_exit_handler SIGUSR1
 
 # set defaults
+DEF_SNAPS_DIR='.btrfs'
+
 argsp_cmdline_exit="${ERR_SUCCESS}"
 debug=''
 dry_run=''
 keep=''
 label=''
 prefix='btrfs-auto-snap'
+quiet=''
 use_syslog=''
 verbose=''
-quiet=''
 writeable='-r'
 
 ##
@@ -76,7 +82,7 @@ usage()
     -q, --quiet         Suppress warning and notices on STDOUT
     -v, --verbose       Print info messages
     -w, --writeable     Create writeable snapshots instead of read-only
-    name                Filesystem name(s), or '//' for all filesystems
+    name                File system name(s), or '//' for all file systems
 "
 }
 
@@ -142,9 +148,13 @@ argsp_stdin_to_array()
 
     while IFS= read -r line
     do
-        local is_blank; is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
-        local is_comment; is_comment="$(echo "${line}" | grep --count -e '^#')"
-        local is_empty; is_empty="$(  echo "${line}" | grep --count -e '^$')"
+        local is_blank
+        local is_comment
+        local is_empty
+
+        is_blank="$(  echo "${line}" | grep --count -e '^[[:space:]]*$')"
+        is_comment="$(echo "${line}" | grep --count -e '^#')"
+        is_empty="$(  echo "${line}" | grep --count -e '^$')"
 
         if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
         then
@@ -281,7 +291,7 @@ argsp_cmdline()
     then
         if [ "${ret_val[help]}" -eq 0 ]
         then
-            log error "The filesystem argument list is empty."
+            log error "The file system argument list is empty."
             log error "Please see $0 --help."
             argsp_cmdline_exit=${ERR_FS_MISSING}
             kill -SIGUSR1 $$
@@ -320,6 +330,43 @@ argsp_cmdline_exit_handler()
 }
 
 ##
+# Calculate the BTRFS-mountpoints to start looking at things from.
+#
+# The important thing to note is that BTRFS layouts can be VERY different: Some systems use
+# multiple mountpoints for multiple subvolumes, some use only one mountpoint, because all
+# the subvolumes of interest are children of that path already, the names of subvolumes in
+# BTRFS might be different from the path they are mounted too etc. Though, it's totally OK
+# to mix mounted and unmounted subvolumes, while at some point we need to distinguish them.
+# This is done by storing the mountpoints, which we assume to always be subvolumes, else
+# individual mounpoints don't make too much sense, and their corresponding subvolume path.
+# When retrieving all subvolumes of all mountpoints, this allows removing already known
+# child subvolumes which are mountpoints on their own already and processed as such.
+#
+# @return Associative array mapping mountpoints and their subvolumes.
+#
+btrfs_mounts_calc()
+{
+    # Ignore the leading slash by purpose, as most BTRFS-tools output relativ paths to
+    # their own BTRFS-root or some given path as well.
+    local -r mps="$(grep 'btrfs' '/proc/mounts')"
+    local -r sed_find='^.+,subvol=/([^ ]+) .+$'
+    local -A ret_val
+
+    while IFS= read -r mp
+    do
+        local path
+        local subvol
+
+        path="$(  echo "${mp}" | awk '{print $2}')"
+        subvol="$(echo "${mp}" | sed -r "s!${sed_find}!\1!")"
+
+        ret_val[${path}]="${subvol}"
+    done <<< "${mps}"
+
+    declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
+}
+
+##
 # Calculate all BTRFS subvolumes based on all mounted BTRFS file systems.
 #
 # "zfs-auto-snapshot" is not only able to snapshot all pools, but as well all individual
@@ -328,86 +375,160 @@ argsp_cmdline_exit_handler()
 # well. By default, each and every subvolume simply gets a ".btrfs" directory to take
 # snapshots and snapshots themself are of course excluded here.
 #
-# @stdin  BTRFS file systems of interest, one per line.
+# @stdin  Associative array mapping mountpoints and their subvolumes
 # @return All subvolumes, one per line.
 #
 btrfs_subvols_calc()
 {
     local -a ret_val=()
-    local -r array_txt="$(argsp_stdin_to_array)"
-    eval "declare -a mps=${array_txt}"
+    eval "declare -A mps=$(cat '/dev/stdin')"
 
     # shellcheck disable=SC2154
-    for mp in "${mps[@]}"
+    for mp in "${!mps[@]}"
     do
+        local mp_subvol
+        local mp_subvols
+
         # The mountpoint itself obviously is a subvolume of interest as well already.
+        mp_subvol="${mps[${mp}]}"
         # shellcheck disable=SC2190
         ret_val+=("${mp}")
 
-        local subvols; subvols="$(btrfs subvolume list "${mp}" | awk '{print $9}')"
+        # The following seems to return relative paths based to the BTRFS root always,
+        # which might be empty or "@" or ... and is different to the file system root "/".
+        mp_subvols="$(btrfs subvolume list -o "${mp}" | awk '{print $9}')"
 
         # Subvolumes seem to have no parent UUID, while snapshots are "readonly" most
         # likely. So check for these attributes, which seems easier than to exclude all
         # currently available snapshots by their paths. That output doesn't include
         # leading slashes, their common directory might change its name etc.
+        #
+        # Some found subvolumes might be children of the current mountpoint, but still be
+        # mounted somewhere else on their own and therefore need to be ignored, as all
+        # mountpoints get processed individually already. To make things worse, paths in
+        # the file system expected by some BTRFS-tools might be different than the path of
+        # some subvolume from BTRFS's perspective and as output by some tools like "list".
+        # So resulting paths need to be build by using the current mountpoint, it's own
+        # subvolume path and the currently processed subvolume.
+        #
+        # mps[/]="@" -> possibly containing "/btrfs_test" as "@/btrfs_test"
+        # mps[/usr/local]="@/usr/local"
         while IFS= read -r subvol
         do
-            local abs_path; abs_path="$(echo "${mp}"/"${subvol}" | sed -r 's!^//!/!')"
-            local show; show="$(btrfs subvolume show "${abs_path}")"
-            local sp='[[:space:]]+'
-            local no_parent_uuid; no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
-            local is_read_only; is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
+            # TODO Should the following check for emptyness be necessary?!
+            if [ -z "${subvol}" ]
+            then
+                continue
+            fi
+
+            local abs_path
+            local pattern
+            local matches
+
+            # Map subvolume path to file system path.
+            abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
+            abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+
+            # Ignore all subvolumes being children and handled as mountpoints already.
+            pattern="$(printf "%s\n" "${!mps[@]}")"
+            matches="$(echo "${pattern}" | grep --count -F -f - -x <(echo "${abs_path}"))"
+
+            if [ "${matches}" != '0' ]
+            then
+                continue
+            fi
+
+            local show
+            local sp
+            local no_parent_uuid
+            local is_read_only
+
+            show="$(btrfs subvolume show "${abs_path}")"
+            sp='[[:space:]]+'
+            no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
+            is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
 
             if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
             then
                 # shellcheck disable=SC2190
                 ret_val+=("${abs_path}")
             fi
-        done <<< "${subvols}"
+        done <<< "${mp_subvols}"
     done
 
     declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
 }
 
 ##
-# Create snapshots using the paths
+# Check if the given paths are BTRFS subvolumes at all.
 #
-# @param[in] The paths to work with.
+# @param[in] The paths to check.
 #
-btrfs_snaps_do()
+btrfs_wrk_paths_check()
 {
-    local -r fs_list="${1:?No paths given.}"
+    local -r wrk_paths="${1:?No paths given.}"
+    # shellcheck disable=SC2154
+    local -r patterns="$(printf "%s\n" "${btrfs_subvols[@]}")"
 
-    log info "Doing snapshots of $fs_list"
-
-    for i in $fs_list
+    for i in $wrk_paths
     do
-        if ! printf "%s\n" "${btrfs_list[@]}" | grep -F -f - -q -x <(echo "${i}")
+        local matches
+
+        matches="$(echo "${patterns}" | grep --count -F -f - -x <(echo "${i}"))"
+        if [ "${matches}" = '0' ]
         then
-            log err "It appears that '${i}' is not a BTRFS filesystem!"
+            log err "It appears that '${i}' is not a BTRFS file system!"
             exit ${ERR_FS_NO_BTRFS}
         fi
-
-        if [ ! -d "${i}/.btrfs" ]
-        then
-            ${dry_run} mkdir "${i}/.btrfs"
-        fi
-
-        # TODO Creating snapshots too frequently so that names overlap with an existing
-        # one, result in some error message about read-only file system, not mentioning
-        # the actual snapshot itself at all. Is bit difficult to understand when
-        # happening especially during tests, so might check if the desired snapshot exists
-        # already.
-        log notice "$( ${dry_run} btrfs subvolume snapshot \
-            ${writeable} "${i}" \
-            "${i%/}/.btrfs/${snapname}" )"
     done
 }
 
 ##
-# Cleanup snapshots depending on how many to keep, if to cleanup at all.
+# Create snapshots using the paths
 #
 # @param[in] The paths to work with.
+# @param[in] Snapshot name to create.
+#
+btrfs_snaps_do()
+{
+    local -r wrk_paths="${1:?No paths given.}"
+    local -r snap_name="${2:?No snap name given.}"
+
+    log info "Doing snapshots of $wrk_paths"
+
+    for i in $wrk_paths
+    do
+        local    snaps_dir
+        local    snap_path
+        local -a snap_opts=()
+
+        snaps_dir="${i%/}/${DEF_SNAPS_DIR}"
+        snap_path="${snaps_dir}/${snap_name}"
+        # shellcheck disable=SC2206
+        snap_opts=(${writeable} "${i}" "${snap_path}")
+
+        if [ ! -d "${snaps_dir}" ]
+        then
+            ${dry_run} mkdir "${snaps_dir}"
+        fi
+
+        # TODO Creating snapshots too frequently might result in their directory names
+        # overlapping, which either results in error messages about read-only file systems
+        # or additional subdirs created in existing snapshot dirs. The latter is a problem
+        # as it prevents deletion of those snapshots because they contain non-snap data.
+        # The following is a workaround for those cases especially making tests easier.
+        # Some better fix might be to check for if the snapshot exists already and don't
+        # create it or use seconds in the names. Needs to be discussed further...
+        log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2> '/dev/null' )"
+        log notice "$( ${dry_run} btrfs subvolume snapshot  "${snap_opts[@]}" )"
+    done
+}
+
+##
+# Cleanup snapshots depending on how many to keep and if to cleanup at all.
+#
+# @param[in] The paths to work with.
+# @param[in] Pattern to find snapshot names for the current prefix and label.
 #
 btrfs_snaps_rm_if()
 {
@@ -416,30 +537,37 @@ btrfs_snaps_rm_if()
         return
     fi
 
-    local -r fs_list="${1:?No paths given.}"
+    local -r wrk_paths="${1:?No paths given.}"
+    local -r snap_patt="${2:?No snap pattern given.}"
 
     log info "Destroying all but the newest ${keep} snapshots"
 
-    for i in $fs_list
+    for i in $wrk_paths
     do
-        fs_keep="${keep}"
+        # We are only interested in snaps this time, which follow a hard-coded naming
+        # scheme currently. This makes it easy to ignore all subvolumes being children of
+        # the current path for some reason and therefore present in the output. We either
+        # don't care about those or handle them anyway as part of "//". So we only care
+        # about the output containing some special directory name. The args given to list
+        # make sure that we only get snaps for the subvolume of intrest and no others, so
+        # it's somewhat safe to remove based on conventions.
         snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
-        paths="$(echo "${paths}" | sed  -r 's!^[^/]+/.btrfs/!.btrfs/!')"
+        paths="$(echo "${paths}" | sed     "\#/${DEF_SNAPS_DIR}/#!d")"
+        paths="$(echo "${paths}" | sed  -r "s!^.+/${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r "s!^//${DEF_SNAPS_DIR}/!/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r "\#/${DEF_SNAPS_DIR}/${snap_patt}#!d")"
+        paths="$(echo "${paths}" | tail -n "+$((keep + 1))")"
 
         while IFS= read -r j
         do
-            if [ -n "${j#"$snapglob"}" ]
+            # TODO Should the following check for emptyness be necessary?!
+            if [ -z "${j}" ]
             then
                 continue
             fi
 
-            fs_keep=$(( fs_keep - 1 ))
-            if [ ${fs_keep} -lt 0 ]
-            then
-                log notice "$( ${dry_run} btrfs subvolume \
-                    delete -c "${i}"/"${j}" )"
-            fi
+            log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
         done <<< "${paths}"
     done
 }
@@ -459,14 +587,14 @@ eval "declare -A cmdline=${cmdline}"
 
 debug="${cmdline[debug]}"
 dry_run="${cmdline[dry_run]}"
+help="${cmdline[help]}"
 keep="${cmdline[keep]}"
 label="${cmdline[label]}"
 prefix="${cmdline[prefix]}"
+quiet="${cmdline[quiet]}"
 use_syslog="${cmdline[use_syslog]}"
 verbose="${cmdline[verbose]}"
-quiet="${cmdline[quiet]}"
-writeable="${cmdline[writable]}"
-help="${cmdline[help]}"
+writeable="${cmdline[writeable]}"
 
 if [ "$help" -eq 1 ]
 then
@@ -474,20 +602,23 @@ then
     exit $ERR_SUCCESS
 fi
 
-snapname=${prefix}_${label}_$(date +%F-%H%M)
-snapglob=".btrfs/${prefix}_${label}????????????????"
+snap_name="${prefix}_${label}_$(date +%F-%H%M)"
+snap_patt='[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}-[[:digit:]]{4}'
+snap_patt="${prefix}_${label}_${snap_patt}"
 
-btrfs_list=$(grep btrfs /proc/mounts | awk '{print $2}' | btrfs_subvols_calc)
-eval "declare -a btrfs_list=${btrfs_list}"
+btrfs_mounts="$(btrfs_mounts_calc)"
+btrfs_subvols_txt="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
+eval "declare -a btrfs_subvols=${btrfs_subvols_txt}"
 
 if [ "${cmdline[paths]}" = '//' ]
 then
-    fs_list="${btrfs_list[*]}"
+    wrk_paths="${btrfs_subvols[*]}"
 else
-    fs_list="${cmdline[paths]}"
+    wrk_paths="${cmdline[paths]}"
 fi
 
-btrfs_snaps_do    "${fs_list}"
-btrfs_snaps_rm_if "${fs_list}"
+btrfs_wrk_paths_check "${wrk_paths}"
+btrfs_snaps_do        "${wrk_paths}" "${snap_name}"
+btrfs_snaps_rm_if     "${wrk_paths}" "${snap_patt}"
 
 # vim: set expandtab:ts=4:sw=4
