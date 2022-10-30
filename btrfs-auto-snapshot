@@ -20,8 +20,8 @@
 # Place, Suite 330, Boston, MA  02111-1307  USA
 
 #set -o errexit
-#set -o functrace
-#set -o xtrace
+set -o functrace
+set -o xtrace
 
 # Define our version
 version=2.0.3
@@ -227,8 +227,8 @@ argsp_cmdline()
             ;;
             (-l|--label)
                 label="$2"
-                while test "${label}" -gt 0
-                do
+                if test -n "${label}"
+                then
                     case $label in
                         ([![:alnum:]_.:\ -]*)
                             log error "The $1 parameter must be alphanumeric."
@@ -237,7 +237,7 @@ argsp_cmdline()
                         ;;
                     esac
                     prefix="${prefix#?}"
-                done
+                fi
 
                 ret_val[label]="$2"
                 shift 2
@@ -250,8 +250,8 @@ argsp_cmdline()
             ;;
             (-p|--prefix)
                 prefix="$2"
-                while test "${prefix}" -gt 0
-                do
+                if test -n "${prefix}"
+                then
                     case $prefix in
                         ([![:alnum:]_.:\ -]*)
                             log error "The $1 parameter must be alphanumeric."
@@ -260,7 +260,7 @@ argsp_cmdline()
                         ;;
                     esac
                     prefix="${prefix#?}"
-                done
+                fi
 
                 ret_val[prefix]="$2"
                 shift 2
