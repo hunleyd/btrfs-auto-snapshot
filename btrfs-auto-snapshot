@@ -338,18 +338,34 @@ argsp_cmdline_exit_handler()
 # BTRFS might be different from the path they are mounted too etc. Though, it's totally OK
 # to mix mounted and unmounted subvolumes, while at some point we need to distinguish them.
 # This is done by storing the mountpoints, which we assume to always be subvolumes, else
-# individual mounpoints don't make too much sense, and their corresponding subvolume path.
+# individual mountpoints don't make too much sense, and their corresponding subvolume path.
 # When retrieving all subvolumes of all mountpoints, this allows removing already known
 # child subvolumes which are mountpoints on their own already and processed as such.
 #
+# The following are some examples of possible mountpoints:
+#
+# {@code /dev/sda2 / btrfs rw,noatime,nodiratime,compress=zlib:3,ssd,space_cache,subvolid=5,subvol=/ 0 0}
+# {@code /dev/sda2 / btrfs rw,relatime,space_cache,subvolid=256,subvol=/@ 0 0}
+# {@code /dev/sda2 /boot/grub2/i386-pc btrfs rw,relatime,space_cache,subvolid=266,subvol=/@/boot/grub2/i386-pc 0 0}
+# {@code /dev/sda2 /boot/grub2/x86_64-efi btrfs rw,relatime,space_cache,subvolid=265,subvol=/@/boot/grub2/x86_64-efi 0 0}
+# {@code /dev/sda2 /home btrfs rw,relatime,space_cache,subvolid=264,subvol=/@/home 0 0}
+# {@code /dev/sda2 /opt btrfs rw,relatime,space_cache,subvolid=263,subvol=/@/opt 0 0}
+# {@code /dev/sda2 /root btrfs rw,relatime,space_cache,subvolid=262,subvol=/@/root 0 0}
+# {@code /dev/sda2 /tmp btrfs rw,relatime,space_cache,subvolid=260,subvol=/@/tmp 0 0}
+# {@code /dev/sda2 /srv btrfs rw,relatime,space_cache,subvolid=261,subvol=/@/srv 0 0}
+# {@code /dev/sda2 /usr/local btrfs rw,relatime,space_cache,subvolid=259,subvol=/@/usr/local 0 0}
+# {@code /dev/sda2 /var btrfs rw,relatime,space_cache,subvolid=258,subvol=/@/var 0 0}
+# 
 # @return Associative array mapping mountpoints and their subvolumes.
 #
 btrfs_mounts_calc()
 {
-    # Ignore the leading slash by purpose, as most BTRFS-tools output relativ paths to
-    # their own BTRFS-root or some given path as well.
+    # Ignore the leading slash by purpose, as most BTRFS-tools output relative paths to
+    # their own BTRFS-root or some given path as well. This is true for custom layouts
+    # using "/" only as well, in which case ther subvol prefix really is "" and the same
+    # like .e.g "@/var" otherwise.
     local -r mps="$(grep 'btrfs' '/proc/mounts')"
-    local -r sed_find='^.+,subvol=/([^ ]+) .+$'
+    local -r sed_find='^.+,subvol=/([^ ]+)? .+$'
     local -A ret_val
 
     while IFS= read -r mp
@@ -425,7 +441,8 @@ btrfs_subvols_calc()
             local pattern
             local matches
 
-            # Map subvolume path to file system path.
+            # Map subvolume path to file system path, while an empty subvolume prefix is
+            # OK for custom layouts.
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
 
