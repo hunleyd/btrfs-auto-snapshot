@@ -570,8 +570,8 @@ btrfs_snaps_rm_if()
         # it's somewhat safe to remove based on conventions.
         snaps="$(btrfs subvolume list -g -o -s --sort=gen "${i}")"
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
-        paths="$(echo "${paths}" | sed     "\#/${DEF_SNAPS_DIR}/#!d")"
-        paths="$(echo "${paths}" | sed  -r "s!^.+/${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r "\#/?${DEF_SNAPS_DIR}/#!d")"
+        paths="$(echo "${paths}" | sed  -r "s!^(.+/)?${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
         paths="$(echo "${paths}" | sed  -r "s!^//${DEF_SNAPS_DIR}/!/${DEF_SNAPS_DIR}/!")"
         paths="$(echo "${paths}" | sed  -r "\#/${DEF_SNAPS_DIR}/${snap_patt}#!d")"
         paths="$(echo "${paths}" | tail -n "+$((keep + 1))")"
