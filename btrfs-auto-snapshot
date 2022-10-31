@@ -604,7 +604,7 @@ fi
 
 snap_name="${prefix}_${label}_$(date +%F-%H%M)"
 snap_patt='[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}-[[:digit:]]{4}'
-snap_patt="${prefix}_${label}_${snap_patt}"
+snap_patt="${prefix}_${label}[_-]${snap_patt}"
 
 btrfs_mounts="$(btrfs_mounts_calc)"
 btrfs_subvols_txt="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
