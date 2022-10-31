@@ -355,7 +355,7 @@ argsp_cmdline_exit_handler()
 # {@code /dev/sda2 /srv btrfs rw,relatime,space_cache,subvolid=261,subvol=/@/srv 0 0}
 # {@code /dev/sda2 /usr/local btrfs rw,relatime,space_cache,subvolid=259,subvol=/@/usr/local 0 0}
 # {@code /dev/sda2 /var btrfs rw,relatime,space_cache,subvolid=258,subvol=/@/var 0 0}
-# 
+#
 # @return Associative array mapping mountpoints and their subvolumes.
 #
 btrfs_mounts_calc()
@@ -529,13 +529,14 @@ btrfs_snaps_do()
             ${dry_run} mkdir "${snaps_dir}"
         fi
 
-        # TODO Creating snapshots too frequently might result in their directory names
-        # overlapping, which either results in error messages about read-only file systems
-        # or additional subdirs created in existing snapshot dirs. The latter is a problem
-        # as it prevents deletion of those snapshots because they contain non-snap data.
-        # The following is a workaround for those cases especially making tests easier.
-        # Some better fix might be to check for if the snapshot exists already and don't
-        # create it or use seconds in the names. Needs to be discussed further...
+        # Creating snapshots too frequently might result in overlapping directory names,
+        # which either results in error messages about read-only file systems or new
+        # subdirs created in existing snapshot dirs. The latter is a problem as those
+        # dirs prevent deletion of snapshots because they contain non-snap data. The
+        # following is a workaround for those cases especially making tests easier.
+        # Though, the same problem might occur because of changes to daylight saving
+        # time, which results in the same snap names getting calculated twice. Not even
+        # higher precision names containing seconds would change that.
         log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2> '/dev/null' )"
         log notice "$( ${dry_run} btrfs subvolume snapshot  "${snap_opts[@]}" )"
     done
