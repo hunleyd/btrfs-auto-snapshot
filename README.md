@@ -30,7 +30,7 @@ GNU Bash (with associative arrays)
 Bugs
 ----
 Find a bug? Please create an issue here on GitHub at:
-https://github.com/hunleyd/btrf-auto-snapshot/issues
+https://github.com/hunleyd/btrfs-auto-snapshot/issues
 
 Twitter
 -------
