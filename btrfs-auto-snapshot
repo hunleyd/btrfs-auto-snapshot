@@ -3,7 +3,7 @@
 ##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
-# Copyright 2014-2022 Doug Hunley <doug.hunley@gmail.com>
+# Copyright 2014-2023 Doug Hunley <doug.hunley@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -140,7 +140,7 @@ log()
 # @return {@code [0]="..." [1]="..." [...]}
 # @see <a href="https://stackoverflow.com/a/16843375/2055163">How to return an array in
 # bash without using globals?</a>
-#
+##
 argsp_stdin_to_array()
 {
     local -r stdin="$(cat '/dev/stdin')"
@@ -175,12 +175,12 @@ argsp_stdin_to_array()
 }
 
 ##
-# Parse and set command line arguments, posisbly aborting in case of errors or missing
+# Parse and set command line arguments, possibly aborting in case of errors or missing
 # paths to actually work with.
 #
 # @param[in] Callers need to forward {@code $@}!
 # return     Associative array with all options and parsed paths.
-#
+##
 argsp_cmdline()
 {
     declare -A ret_val
@@ -323,7 +323,7 @@ argsp_cmdline()
 # the returned list of paths to work with. So exit within that function doesn't work
 # easily, which is worked around by using a special global variable and {@code kill} with
 # {@code trap}.
-#
+##
 argsp_cmdline_exit_handler()
 {
     exit ${argsp_cmdline_exit}
@@ -362,7 +362,7 @@ btrfs_mounts_calc()
 {
     # Ignore the leading slash by purpose, as most BTRFS-tools output relative paths to
     # their own BTRFS-root or some given path as well. This is true for custom layouts
-    # using "/" only as well, in which case ther subvol prefix really is "" and the same
+    # using "/" only as well, in which case their subvol prefix really is "" and the same
     # like .e.g "@/var" otherwise.
     local -r mps="$(grep 'btrfs' '/proc/mounts')"
     local -r sed_find='^.+,subvol=/([^ ]+)? .+$'
@@ -431,7 +431,7 @@ btrfs_subvols_calc()
         # mps[/usr/local]="@/usr/local"
         while IFS= read -r subvol
         do
-            # TODO Should the following check for emptyness be necessary?!
+            # TODO Should the following check for emptiness be necessary?!
             if [ -z "${subvol}" ]
             then
                 continue
@@ -443,6 +443,8 @@ btrfs_subvols_calc()
 
             # Map subvolume path to file system path, while an empty subvolume prefix is
             # OK for custom layouts.
+            [[ "${mp}" != */ ]] && mp="${mp}/"
+
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
 
@@ -579,7 +581,7 @@ btrfs_snaps_rm_if()
 
         while IFS= read -r j
         do
-            # TODO Should the following check for emptyness be necessary?!
+            # TODO Should the following check for emptiness be necessary?!
             if [ -z "${j}" ]
             then
                 continue
