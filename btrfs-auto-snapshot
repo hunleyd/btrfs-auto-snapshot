@@ -3,7 +3,7 @@
 ##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
-# Copyright 2014-2022 Doug Hunley <doug.hunley@gmail.com>
+# Copyright 2014-2023 Doug Hunley <doug.hunley@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -60,8 +60,7 @@ check_sys_reqs()
 {
     unset assoc
     # shellcheck disable=SC2034
-    if ! declare -A assoc 2> /dev/null
-    then
+    if ! declare -A assoc 2>/dev/null; then
         echo "Associative arrays not supported! At least BASH 4 needed."
         exit ${ERR_MISSING_SYS_REQS}
     fi
@@ -92,37 +91,37 @@ log()
     shift 1
 
     case $LEVEL in
-        (eme*)
+         eme*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.emerge -- "$*"
             echo Emergency: "$*" 1>&2
             ;;
-        (ale*)
+         ale*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.alert -- "$*"
             echo Alert: "$*" 1>&2
             ;;
-        (cri*)
+         cri*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.crit -- "$*"
             echo Critical: "$*" 1>&2
             ;;
-        (err*)
+         err*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.err -- "$*"
             echo Error: "$*" 1>&2
             ;;
-        (war*)
+         war*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.warn -- "$*"
             echo Warning: "$*" 1>&2
             ;;
-        (not*)
+         not*)
             test -n "$use_syslog" && logger -t "$prefix" -p daemon.notice -- "$*"
             test -n "$verbose" && echo Notice: "$*" 1>&2
             ;;
-        (inf*)
+         inf*)
             test -n "$verbose" && echo "$*"
             ;;
-        (deb*)
+         deb*)
             test -n "$debug" && echo Debug: "$*"
             ;;
-        (*)
+         *)
             test -n "$use_syslog" && logger -t "$prefix" -- "$*"
             echo "$*" 1>&2
             ;;
@@ -140,14 +139,13 @@ log()
 # @return {@code [0]="..." [1]="..." [...]}
 # @see <a href="https://stackoverflow.com/a/16843375/2055163">How to return an array in
 # bash without using globals?</a>
-#
+##
 argsp_stdin_to_array()
 {
     local -r stdin="$(cat '/dev/stdin')"
     local -a ret_val=()
 
-    while IFS= read -r line
-    do
+    while IFS= read -r line; do
         local is_blank
         local is_comment
         local is_empty
@@ -156,17 +154,15 @@ argsp_stdin_to_array()
         is_comment="$(echo "${line}" | grep --count -e '^#')"
         is_empty="$(  echo "${line}" | grep --count -e '^$')"
 
-        if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]
-        then
+        if [ "${is_blank}" = '1' ] || [ "${is_comment}" = '1' ] || [ "${is_empty}" = '1' ]; then
             continue
         fi
 
         # shellcheck disable=SC2190
         ret_val+=("${line}")
-    done <<< "${stdin}"
+    done <<<"${stdin}"
 
-    if [ ${#ret_val[@]} -eq 0 ]
-    then
+    if [ ${#ret_val[@]} -eq 0 ]; then
         echo 'No arguments given using STDIN.' >&2
         exit ${ERR_STDIN_EMPTY}
     fi
@@ -175,12 +171,12 @@ argsp_stdin_to_array()
 }
 
 ##
-# Parse and set command line arguments, posisbly aborting in case of errors or missing
+# Parse and set command line arguments, possibly aborting in case of errors or missing
 # paths to actually work with.
 #
 # @param[in] Callers need to forward {@code $@}!
 # return     Associative array with all options and parsed paths.
-#
+##
 argsp_cmdline()
 {
     declare -A ret_val
@@ -197,100 +193,94 @@ argsp_cmdline()
     ret_val[paths]=''
     ret_val[help]='0'
 
-    while [ $# -gt 0 ]
-    do
+    while [ $# -gt 0 ]; do
         case "$1" in
-            (-d|--debug)
+             -d | --debug)
                 ret_val[debug]=1
                 ret_val[quiet]=''
                 ret_val[verbose]=1
                 shift 1
             ;;
-            (-g|--syslog)
+             -g | --syslog)
                 ret_val[use_syslog]=1
                 shift 1
             ;;
-            (-h|--help)
+             -h | --help)
                 ret_val[help]=1
                 shift 1
             ;;
-            (-k|--keep)
-                if ! test "$2" -gt 0 2>/dev/null
-                then
+             -k | --keep)
+                if ! test "$2" -gt 0 2>/dev/null; then
                     log error "The $1 parameter must be a positive integer."
                     argsp_cmdline_exit=${ERR_KEEP_NEGATIVE}
                     kill -SIGUSR1 $$
-                fi
+            fi
 
                 ret_val[keep]=$2
                 shift 2
             ;;
-            (-l|--label)
+             -l | --label)
                 label="$2"
-                if test -n "${label}"
-                then
+                if test -n "${label}"; then
                     case $label in
-                        ([![:alnum:]_.:\ -]*)
+                         [![:alnum:]_.:\ -]*)
                             log error "The $1 parameter must be alphanumeric."
                             argsp_cmdline_exit=${ERR_PREFIX_WRONG}
                             kill -SIGUSR1 $$
                         ;;
-                    esac
+                esac
                     prefix="${prefix#?}"
-                fi
+            fi
 
                 ret_val[label]="$2"
                 shift 2
             ;;
-            (-n|--dry-run)
+             -n | --dry-run)
                 ret_val[dry_run]='echo'
                 ret_val[verbose]=1
                 log info "Doing a dry run. Not running these commands..."
                 shift 1
             ;;
-            (-p|--prefix)
+             -p | --prefix)
                 prefix="$2"
-                if test -n "${prefix}"
-                then
+                if test -n "${prefix}"; then
                     case $prefix in
-                        ([![:alnum:]_.:\ -]*)
+                         [![:alnum:]_.:\ -]*)
                             log error "The $1 parameter must be alphanumeric."
                             argsp_cmdline_exit=${ERR_PREFIX_WRONG}
                             kill -SIGUSR1 $$
                         ;;
-                    esac
+                esac
                     prefix="${prefix#?}"
-                fi
+            fi
 
                 ret_val[prefix]="$2"
                 shift 2
             ;;
-            (-q|--quiet)
+             -q | --quiet)
                 ret_val[debug]=''
                 ret_val[quiet]=1
                 ret_val[verbose]=''
                 shift 1
             ;;
-            (-v|--verbose)
+             -v | --verbose)
                 ret_val[quiet]=''
                 ret_val[verbose]=1
                 shift 1
             ;;
-            (-w|--writeable)
+             -w | --writeable)
                 ret_val[writeable]=''
                 shift 1
             ;;
-            (--)
+             --)
                 shift 1
                 break
             ;;
         esac
     done
 
-    if [ $# -eq 0 ]
-    then
-        if [ "${ret_val[help]}" -eq 0 ]
-        then
+    if [ $# -eq 0 ]; then
+        if [ "${ret_val[help]}" -eq 0 ]; then
             log error "The file system argument list is empty."
             log error "Please see $0 --help."
             argsp_cmdline_exit=${ERR_FS_MISSING}
@@ -300,13 +290,11 @@ argsp_cmdline()
 
     # Count the number of times '//' appears on the command line.
     local slashies=0
-    for i in "$@"
-    do
-         test "$i" = '//' && slashies=$(( slashies + 1 ))
+    for i in "$@"; do
+         test "$i" = '//' && slashies=$((slashies + 1))
     done
 
-    if [ $# -gt 1 ] && [ $slashies -gt 0 ]
-    then
+    if [ $# -gt 1 ] && [ $slashies -gt 0 ]; then
         log error "The // must be the only argument if it is given."
         argsp_cmdline_exit=${ERR_FS_SLASHIES}
         kill -SIGUSR1 $$
@@ -323,7 +311,7 @@ argsp_cmdline()
 # the returned list of paths to work with. So exit within that function doesn't work
 # easily, which is worked around by using a special global variable and {@code kill} with
 # {@code trap}.
-#
+##
 argsp_cmdline_exit_handler()
 {
     exit ${argsp_cmdline_exit}
@@ -362,14 +350,13 @@ btrfs_mounts_calc()
 {
     # Ignore the leading slash by purpose, as most BTRFS-tools output relative paths to
     # their own BTRFS-root or some given path as well. This is true for custom layouts
-    # using "/" only as well, in which case ther subvol prefix really is "" and the same
+    # using "/" only as well, in which case their subvol prefix really is "" and the same
     # like .e.g "@/var" otherwise.
     local -r mps="$(grep 'btrfs' '/proc/mounts')"
     local -r sed_find='^.+,subvol=/([^ ]+)? .+$'
     local -A ret_val
 
-    while IFS= read -r mp
-    do
+    while IFS= read -r mp; do
         local path
         local subvol
 
@@ -377,7 +364,7 @@ btrfs_mounts_calc()
         subvol="$(echo "${mp}" | sed -r "s!${sed_find}!\1!")"
 
         ret_val[${path}]="${subvol}"
-    done <<< "${mps}"
+    done <<<"${mps}"
 
     declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
 }
@@ -400,8 +387,7 @@ btrfs_subvols_calc()
     eval "declare -A mps=$(cat '/dev/stdin')"
 
     # shellcheck disable=SC2154
-    for mp in "${!mps[@]}"
-    do
+    for mp in "${!mps[@]}"; do
         local mp_subvol
         local mp_subvols
 
@@ -429,11 +415,9 @@ btrfs_subvols_calc()
         #
         # mps[/]="@" -> possibly containing "/btrfs_test" as "@/btrfs_test"
         # mps[/usr/local]="@/usr/local"
-        while IFS= read -r subvol
-        do
-            # TODO Should the following check for emptyness be necessary?!
-            if [ -z "${subvol}" ]
-            then
+        while IFS= read -r subvol; do
+            # TODO Should the following check for emptiness be necessary?!
+            if [ -z "${subvol}" ]; then
                 continue
             fi
 
@@ -443,6 +427,8 @@ btrfs_subvols_calc()
 
             # Map subvolume path to file system path, while an empty subvolume prefix is
             # OK for custom layouts.
+            [[ "${mp}" != */ ]] && mp="${mp}/"
+
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
             abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
 
@@ -450,8 +436,7 @@ btrfs_subvols_calc()
             pattern="$(printf "%s\n" "${!mps[@]}")"
             matches="$(echo "${pattern}" | grep --count -F -f - -x <(echo "${abs_path}"))"
 
-            if [ "${matches}" != '0' ]
-            then
+            if [ "${matches}" != '0' ]; then
                 continue
             fi
 
@@ -465,12 +450,11 @@ btrfs_subvols_calc()
             no_parent_uuid="$(echo "${show}" | grep --count -E "^${sp}Parent UUID:${sp}-$")"
             is_read_only="$(  echo "${show}" | grep --count -E "^${sp}Flags:${sp}readonly$")"
 
-            if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]
-            then
+            if [ "${no_parent_uuid}" = '1' ] && [ "${is_read_only}" = '0' ]; then
                 # shellcheck disable=SC2190
                 ret_val+=("${abs_path}")
             fi
-        done <<< "${mp_subvols}"
+        done <<<"${mp_subvols}"
     done
 
     declare -p ret_val | sed -e 's/^declare -a [^=]*=//'
@@ -487,13 +471,11 @@ btrfs_wrk_paths_check()
     # shellcheck disable=SC2154
     local -r patterns="$(printf "%s\n" "${btrfs_subvols[@]}")"
 
-    for i in $wrk_paths
-    do
+    for i in $wrk_paths; do
         local matches
 
         matches="$(echo "${patterns}" | grep --count -F -f - -x <(echo "${i}"))"
-        if [ "${matches}" = '0' ]
-        then
+        if [ "${matches}" = '0' ]; then
             log err "It appears that '${i}' is not a BTRFS file system!"
             exit ${ERR_FS_NO_BTRFS}
         fi
@@ -513,8 +495,7 @@ btrfs_snaps_do()
 
     log info "Doing snapshots of $wrk_paths"
 
-    for i in $wrk_paths
-    do
+    for i in $wrk_paths; do
         local    snaps_dir
         local    snap_path
         local -a snap_opts=()
@@ -524,8 +505,7 @@ btrfs_snaps_do()
         # shellcheck disable=SC2206
         snap_opts=(${writeable} "${i}" "${snap_path}")
 
-        if [ ! -d "${snaps_dir}" ]
-        then
+        if [ ! -d "${snaps_dir}" ]; then
             ${dry_run} mkdir "${snaps_dir}"
         fi
 
@@ -537,8 +517,8 @@ btrfs_snaps_do()
         # Though, the same problem might occur because of changes to daylight saving
         # time, which results in the same snap names getting calculated twice. Not even
         # higher precision names containing seconds would change that.
-        log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2> '/dev/null' )"
-        log notice "$( ${dry_run} btrfs subvolume snapshot  "${snap_opts[@]}" )"
+        log notice "$( ${dry_run} btrfs subvolume delete -c "${snap_path}" 2>'/dev/null')"
+        log notice "$( ${dry_run} btrfs subvolume snapshot  "${snap_opts[@]}")"
     done
 }
 
@@ -550,8 +530,7 @@ btrfs_snaps_do()
 #
 btrfs_snaps_rm_if()
 {
-    if [ -z "${keep}" ]
-    then
+    if [ -z "${keep}" ]; then
         return
     fi
 
@@ -560,8 +539,7 @@ btrfs_snaps_rm_if()
 
     log info "Destroying all but the newest ${keep} snapshots"
 
-    for i in $wrk_paths
-    do
+    for i in $wrk_paths; do
         # We are only interested in snaps this time, which follow a hard-coded naming
         # scheme currently. This makes it easy to ignore all subvolumes being children of
         # the current path for some reason and therefore present in the output. We either
@@ -577,16 +555,14 @@ btrfs_snaps_rm_if()
         paths="$(echo "${paths}" | sed  -r "\#/${DEF_SNAPS_DIR}/${snap_patt}#!d")"
         paths="$(echo "${paths}" | tail -n "+$((keep + 1))")"
 
-        while IFS= read -r j
-        do
-            # TODO Should the following check for emptyness be necessary?!
-            if [ -z "${j}" ]
-            then
+        while IFS= read -r j; do
+            # TODO Should the following check for emptiness be necessary?!
+            if [ -z "${j}" ]; then
                 continue
             fi
 
-            log notice "$( ${dry_run} btrfs subvolume delete -c "${j}" )"
-        done <<< "${paths}"
+            log notice "$( ${dry_run} btrfs subvolume delete -c "${j}")"
+        done <<<"${paths}"
     done
 }
 
@@ -596,8 +572,8 @@ getopt=$(getopt \
     --longoptions=dry-run,prefix:,quiet,verbose \
     --longoptions=syslog,writeable \
     --options=d,g,h,k:,l:,n,p:,q,v,w \
-    -- "$@" ) \
-    || exit ${ERR_GETOPT_FAILED}
+    -- "$@") ||
+       exit ${ERR_GETOPT_FAILED}
 
 eval set -- "${getopt}"
 cmdline="$(argsp_cmdline "$@")"
@@ -614,8 +590,7 @@ use_syslog="${cmdline[use_syslog]}"
 verbose="${cmdline[verbose]}"
 writeable="${cmdline[writeable]}"
 
-if [ "$help" -eq 1 ]
-then
+if [ "$help" -eq 1 ]; then
     usage
     exit $ERR_SUCCESS
 fi
@@ -628,8 +603,7 @@ btrfs_mounts="$(btrfs_mounts_calc)"
 btrfs_subvols_txt="$(echo "${btrfs_mounts}" | btrfs_subvols_calc)"
 eval "declare -a btrfs_subvols=${btrfs_subvols_txt}"
 
-if [ "${cmdline[paths]}" = '//' ]
-then
+if [ "${cmdline[paths]}" = '//' ]; then
     wrk_paths="${btrfs_subvols[*]}"
 else
     wrk_paths="${cmdline[paths]}"

@@ -3,10 +3,17 @@ on: [push, pull_request]
 name: 'Trigger: Push action'
 
 jobs:
-  shellcheck:
-    name: Shellcheck
+  lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Run ShellCheck
-      uses: ludeeus/action-shellcheck@master
+      - uses: actions/checkout@v4
+      # TODO: running in alpine now, because `shfmt`
+      # of the current ubuntu instance lacks `--keep-padding`.
+      # Once ubuntu is upgraded to 24.04 or so, get rid of the
+      # containers.
+      - run: |
+          docker run -v $(pwd):/x -w /x -i --rm alpine <<EOF
+          apk add shellcheck shfmt make
+          make lint
+          EOF
+      - run: git diff --exit-code
