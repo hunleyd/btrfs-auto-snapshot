@@ -32,20 +32,19 @@ Bugs
 Find a bug? Please create an issue here on GitHub at:
 https://github.com/hunleyd/btrfs-auto-snapshot/issues
 
-Twitter
--------
-Keep up to date on announcements and more by following Doug on Twitter, 
-<a href="http://twitter.com/hunleyd">@hunleyd</a>
+Maintainer
+----------
+**Motiekus Jakštys**
++ GitHub: http://github.com/motiejus
 
-Authors
+Author
 -------
 **Douglas J Hunley**
-+ Twitter: http://twitter.com/hunleyd
 + GitHub: http://github.com/hunleyd
 
 Copyright and license
 ---------------------
-Copyright 2015-2020 Douglas J Hunley.
+Copyright 2015 Douglas J Hunley.
 
 Licensed under the GNU GPL License, Version 2.0 (the "License"); you may not use this work
 except in compliance with the License. You may obtain a copy of the License in the
