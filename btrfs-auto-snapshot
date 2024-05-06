@@ -23,8 +23,9 @@
 #set -o functrace
 #set -o xtrace
 
-# Define our version
-version=2.0.3
+# Define our version. Distributions may replace it with:
+#   sed -i 's/^\(BTRFS_AUTO_SNAPSHOT_VERSION\)=.*/\1=<version>/' <file>
+BTRFS_AUTO_SNAPSHOT_VERSION=${BTRFS_AUTO_SNAPSHOT_VERSION:-unknown}
 
 # Define various error codes
 ERR_SUCCESS=0
@@ -68,7 +69,7 @@ check_sys_reqs()
 
 usage()
 {
-    echo "$0 $version"
+    echo "$0 $BTRFS_AUTO_SNAPSHOT_VERSION"
     echo
     echo "Usage: $0 [options] [-l label] <'//' | name [name...]>
     -d, --debug         Print debugging messages
