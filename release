@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+err()
+{
+    echo >&2 "Error: $*"
+    exit 1
+}
+
+log_run()
+{
+    echo >&2 "+ $*"
+    "$@"
+}
+
+git status --porcelain | grep -q "" &&
+    err "working tree is dirty, commit your changes first."
+
+[[ "$1" =~ ^v([0-9]+)\.([0-9]+)(\.([0-9]+))?(-rc([0-9]+))?$ ]] ||
+    err "arg1 accepts the following formats: v1.0 v1.0.0 v1.0-rc1 v1.0.1-rc1"
+
+git tag | grep -q "^$1$" &&
+    err "tag $1 already exists"
+
+# sanity test
+make lint
+
+log_run sed -i'' 's/^\(BTRFS_AUTO_SNAPSHOT_VERSION\)=.*/\1='"$1/" btrfs-auto-snapshot
+log_run git add btrfs-auto-snapshot
+log_run git commit -m "btrfs-auto-snapshot $1"
+
+last_tag=$(git tag | tail -1)
+{
+    echo btrfs-auto-snapshot "$1"
+    echo
+    echo Changes since "$last_tag":
+    git log --pretty=format:"- [%an] %s" "$last_tag"..HEAD
+} | log_run git tag -F - "$1"
+
+log_run sed -i'' 's/^\(BTRFS_AUTO_SNAPSHOT_VERSION\)=.*/\1='"$1+dev/" btrfs-auto-snapshot
+log_run git add btrfs-auto-snapshot
+log_run git commit -m "btrfs-auto-snapshot $1+dev"
+
+echo
+echo "You have tagged $1. Now run the following:"
+echo "  git push origin master"
+echo "  git push origin $1"

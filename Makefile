@@ -1,4 +1,4 @@
-FILES = btrfs-auto-snapshot
+FILES = btrfs-auto-snapshot release
 
 .PHONY: lint
 lint: shfmt shellcheck
