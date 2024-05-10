@@ -24,9 +24,7 @@ set -euo pipefail
 #set -o functrace
 #set -o xtrace
 
-# Define our version. Distributions may replace it with:
-#   sed -i 's/^\(BTRFS_AUTO_SNAPSHOT_VERSION\)=.*/\1=<version>/' <file>
-BTRFS_AUTO_SNAPSHOT_VERSION=${BTRFS_AUTO_SNAPSHOT_VERSION:-unknown}
+BTRFS_AUTO_SNAPSHOT_VERSION=v2.0.4+dev
 
 # Define various error codes
 ERR_SUCCESS=0
