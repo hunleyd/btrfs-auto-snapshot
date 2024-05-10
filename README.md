@@ -21,11 +21,14 @@ filesystem being snapped and are read-only by default.
 
 Requirements
 ------------
-GNU Bash (with associative arrays)
-<br>GNU Coreutils
-<br>GNU grep
-<br>GNU gawk
-<br>btrfs-progs
+
+* GNU Bash (with associative arrays)
+* GNU Coreutils
+* GNU grep
+* GNU awk
+* getopt
+* btrfs-progs
+* (optional) syslog
 
 Bugs
 ----
@@ -34,8 +37,9 @@ https://github.com/hunleyd/btrfs-auto-snapshot/issues
 
 Maintainer
 ----------
-**Motiekus Jakštys**
+**Motiejus Jakštys**
 + GitHub: http://github.com/motiejus
++ Personal web page: https://jakstys.lt
 
 Author
 -------
