@@ -3,7 +3,7 @@
 ##
 # btrfs-auto-snapshot for Linux
 # Automatically create, rotate, and destroy periodic BTRFS snapshots.
-# Copyright 2014-2023 Doug Hunley <doug.hunley@gmail.com>
+# Copyright 2014-2026 Doug Hunley <doug.hunley@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -24,7 +24,7 @@ set -euo pipefail
 #set -o functrace
 #set -o xtrace
 
-BTRFS_AUTO_SNAPSHOT_VERSION=v2.0.4+dev
+BTRFS_AUTO_SNAPSHOT_VERSION=v2.1.0
 
 # Define various error codes
 ERR_SUCCESS=0
@@ -595,8 +595,8 @@ if [ "$help" -eq 1 ]; then
     exit $ERR_SUCCESS
 fi
 
-snap_name="${prefix}_${label}_$(date +%F-%H%M)"
-snap_patt='[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}-[[:digit:]]{4}'
+snap_name="${prefix}_${label}_$(date +%Y-%m-%dT%H:%M:%S)"
+snap_patt='[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}[-T][[:digit:]]{2}:?[[:digit:]]{2}(:?[[:digit:]]{2})?'
 snap_patt="${prefix}_${label}[_-]${snap_patt}"
 
 btrfs_mounts="$(btrfs_mounts_calc)"
