@@ -430,7 +430,7 @@ btrfs_subvols_calc()
             [[ "${mp}" != */ ]] && mp="${mp}/"
 
             abs_path="$(echo "${subvol}"   | sed -r "s!^${mp_subvol}!${mp}!")"
-            abs_path="$(echo "${abs_path}" | sed -r 's!^//!/!')"
+            abs_path="$(echo "${abs_path}" | sed -r 's!//!/!g')"
 
             # Ignore all subvolumes being children and handled as mountpoints already.
             pattern="$(printf "%s\n" "${!mps[@]}")"
@@ -551,7 +551,7 @@ btrfs_snaps_rm_if()
         paths="$(echo "${snaps}" | sort -r -n -k 4 | awk '{print $NF}')"
         paths="$(echo "${paths}" | sed  -r "\#/?${DEF_SNAPS_DIR}/#!d")"
         paths="$(echo "${paths}" | sed  -r "s!^(.+/)?${DEF_SNAPS_DIR}/!${i}/${DEF_SNAPS_DIR}/!")"
-        paths="$(echo "${paths}" | sed  -r "s!^//${DEF_SNAPS_DIR}/!/${DEF_SNAPS_DIR}/!")"
+        paths="$(echo "${paths}" | sed  -r 's!//!/!g')"
         paths="$(echo "${paths}" | sed  -r "\#/${DEF_SNAPS_DIR}/${snap_patt}#!d")"
         paths="$(echo "${paths}" | tail -n "+$((keep + 1))")"
 
