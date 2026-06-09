@@ -30,6 +30,23 @@ Requirements
 * btrfs-progs
 * (optional) syslog
 
+Testing
+-------
+
+A comprehensive test suite is included that uses loopback devices to simulate
+Btrfs environments safely. This allows testing snapshot creation and rotation
+logic without risking your actual data.
+
+To run the tests:
+
+<pre>
+make test
+</pre>
+
+Note: The test script uses `sudo` internally for operations requiring root
+privileges (like mounting loopback devices and managing Btrfs). You may be
+prompted for your password during execution.
+
 Bugs
 ----
 Find a bug? Please create an issue here on GitHub at:

@@ -354,7 +354,7 @@ btrfs_mounts_calc()
         subvol="${subvol#/}"
 
         ret_val["${path}"]="${subvol}"
-    done < /proc/mounts
+    done < "${BTRFS_MOUNTS_FILE:-/proc/mounts}"
 
     declare -p ret_val | sed -e 's/^declare -A [^=]*=//'
 }
